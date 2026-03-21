@@ -62,7 +62,7 @@ enum { HEIGHT = 480 };
 uint8_t fbufdata[HEIGHT*WIDTH*3] = {0};
 const char* fname = "gaem.ppm";
 
-uint32_t main() {
+int main() {
 	Fbuf fb = { {WIDTH, HEIGHT}, fbufdata };
 	FILE* f = fopen(fname, "wb");
 	fprintf(f, "P6\n%d %d 255\n", WIDTH, HEIGHT);
