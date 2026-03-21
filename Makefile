@@ -9,4 +9,4 @@ run: game
 	convert gaem.ppm gaem.png
 
 clean:
-	rm -f game *.o
+	rm -f game *.o *.png *.ppm

@@ -7,7 +7,7 @@ typedef struct color_t {
 } Color;
 
 typedef struct vec2_t {
-	int x, y;
+	uint32_t x, y;
 } Vec2;
 
 typedef struct rect_t {
@@ -44,11 +44,11 @@ void fb_draw_rect_mirrored_x(Fbuf *fb, Rect rect, Color clr) {
 	fb_draw_rect(fb, rect, clr);
 }
 
-int square(int x) {
+uint32_t square(uint32_t x) {
 	return x*x;
 }
 
-void fb_draw_parabola(Fbuf *fb, Rect bound, Vec2 origin, int a, Color clr) {
+void fb_draw_parabola(Fbuf *fb, Rect bound, Vec2 origin, uint32_t a, Color clr) {
 	Vec2 r;
 	for(r.y = bound.r0.y; r.y < bound.r0.y + bound.sz.y; ++r.y)
 		for(r.x = bound.r0.x; r.x < bound.r0.x + bound.sz.x; ++r.x)
@@ -62,7 +62,7 @@ enum { HEIGHT = 480 };
 uint8_t fbufdata[HEIGHT*WIDTH*3] = {0};
 const char* fname = "gaem.ppm";
 
-int main() {
+uint32_t main() {
 	Fbuf fb = { {WIDTH, HEIGHT}, fbufdata };
 	FILE* f = fopen(fname, "wb");
 	fprintf(f, "P6\n%d %d 255\n", WIDTH, HEIGHT);
