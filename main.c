@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <unistd.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -215,7 +214,6 @@ void render_to_x(Fbuf *fb) {
 	);
 	XMapWindow(disp, win);
 	XSync(disp, False);
-	sleep(2);
 
 	(void)fb;
 	(void)screen;
