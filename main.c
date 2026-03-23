@@ -1,6 +1,11 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <unistd.h>
+
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/extensions/XShm.h>
 
 typedef uint8_t u8;
 typedef uint32_t u32;
@@ -119,7 +124,7 @@ Color lerp(Vec3B B, Vec3Color colors) {
 	};
 }
 
-void fb_draw_triangle(Fbuf *fb, Triangle S, Vec3Color colors, Rect bound) {
+void fb_draw_triangle(Fbuf *fb, Rect bound, Triangle S, Vec3Color colors) {
 	Vec2 dr1 = vec2sub(S.r1, S.r0);
 	Vec2 dr2 = vec2sub(S.r2, S.r0);
 	i32 D = det(dr1, dr2);
@@ -143,19 +148,14 @@ enum { WIDTH = 640 };
 enum { HEIGHT = 480 };
 
 u8 fbufdata[HEIGHT*WIDTH*3] = {0};
-const char* fname = "gaem.ppm";
 
-int main() {
-	Fbuf fb = { {WIDTH, HEIGHT}, fbufdata };
-	FILE* f = fopen(fname, "wb");
-	fprintf(f, "P6\n%d %d 255\n", WIDTH, HEIGHT);
-
+void draw(Fbuf *fb) {
 	Rect EyeLeft = {
 		{ 20, 100 },
 		{ 160, 100 },
 	};
-	Color EyeClr = {0, 0xFF, 0};
-	fb_draw_rect_mirrored_x(&fb, EyeLeft, EyeClr);
+	Color EyeClr = {0x00, 0xFF, 0x00};
+	fb_draw_rect_mirrored_x(fb, EyeLeft, EyeClr);
 
 	Rect SmileBound = {
 		{0, HEIGHT/2},
@@ -164,7 +164,7 @@ int main() {
 
 	Vec2 SmileOrigin = {WIDTH/2, 5*HEIGHT/6};
 	Color SmileClr = {0xFF, 0, 0};
-	fb_draw_parabola(&fb, SmileBound, SmileOrigin, -256, SmileClr);
+	fb_draw_parabola(fb, SmileBound, SmileOrigin, -256, SmileClr);
 
 	Rect FbBound = {
 		{0, 0},
@@ -180,9 +180,65 @@ int main() {
 		{0xFF, 0x7F, 0x3F},
 		{0x7F, 0xFF, 0x3F},
 	};
-	fb_draw_triangle(&fb, Nose, NoseColors, FbBound);
+	fb_draw_triangle(fb, FbBound, Nose, NoseColors);
+}
 
-	fwrite(fb.buf, 1, WIDTH*HEIGHT*3, f);
+void render_to_ppm(Fbuf *fb) {
+	const char* fname = "gaem.ppm";
+	FILE* f = fopen(fname, "wb");
+	fprintf(f, "P6\n%d %d 255\n", WIDTH, HEIGHT);
+	fwrite(fb->buf, 1, WIDTH*HEIGHT*3, f);
+}
+
+void render_to_x(Fbuf *fb) {
+	Display *disp = XOpenDisplay(NULL);
+	Window root = DefaultRootWindow(disp);
+	Screen *screen = DefaultScreenOfDisplay(disp);
+	int scrnu = DefaultScreen(disp);
+	unsigned long blackpix = BlackPixel(disp, scrnu);
+	unsigned long whitepix = WhitePixel(disp, scrnu);
+	GC gc = DefaultGC(disp, scrnu);
+
+	int defdepth = DefaultDepth(disp, scrnu);
+	Colormap defcmap = DefaultColormap(disp, scrnu);
+	Visual *defvis = DefaultVisual(disp, scrnu);
+
+	XSetWindowAttributes xswattrs = {0};
+	xswattrs.background_pixel = blackpix;
+	xswattrs.event_mask = StructureNotifyMask | ExposureMask;
+
+	Window win = XCreateWindow(
+		disp, root,
+		0, 0, WIDTH, HEIGHT,
+		0, 24, InputOutput,
+		defvis /*change*/, CWEventMask | CWBackPixel, &xswattrs
+	);
+	XMapWindow(disp, win);
+	XSync(disp, False);
+	sleep(2);
+
+	(void)fb;
+	(void)screen;
+	(void)whitepix;
+	(void)gc;
+	(void)defdepth;
+	(void)defcmap;
+
+	XEvent ev;
+	while(1) {
+		XNextEvent(disp, &ev);
+		if(ev.type == DestroyNotify) break;
+	}
+
+	XCloseDisplay(disp);
+	return;
+}
+
+int main() {
+	Fbuf fb = { {WIDTH, HEIGHT}, fbufdata };
+	draw(&fb);
+	render_to_ppm(&fb);
+	render_to_x(&fb);
 
 	return 0;
 }

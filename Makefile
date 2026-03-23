@@ -1,8 +1,9 @@
 CC=gcc
 CFLAGS=-Wall -Wextra -Wvla -Wpedantic
+LFLAGS=-lX11 -lXext
 
 game: main.c
-	$(CC) $(CFLAGS) -o game main.c
+	$(CC) $(CFLAGS) $(LFLAGS) -o game main.c
 
 clean:
 	rm -f game *.o
