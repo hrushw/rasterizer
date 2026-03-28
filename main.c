@@ -40,24 +40,24 @@ typedef struct fbuf_t {
 	Pixel *buf;
 } Fbuf;
 
-u8 pixR(Pixel p) {
+u8 pixA(Pixel p) {
 	return (p & 0xFF000000) >> 24;
 }
 
-u8 pixG(Pixel p) {
+u8 pixR(Pixel p) {
 	return (p & 0x00FF0000) >> 16;
 }
 
-u8 pixB(Pixel p) {
+u8 pixG(Pixel p) {
 	return (p & 0x0000FF00) >>  8;
 }
 
-u8 pixA(Pixel p) {
+u8 pixB(Pixel p) {
 	return (p & 0x000000FF);
 }
 
-Pixel rgba_to_pixel(u8 r, u8 g, u8 b, u8 a) {
-	return (r << 24) | (g << 16) | (b << 8) | a;
+Pixel argb_to_pixel(u8 a, u8 r, u8 g, u8 b) {
+	return (a << 24) | (r << 16) | (g << 8) | b;
 }
 
 void fb_set_pix(Fbuf *fb, Vec2 r, Pixel p) {
@@ -136,11 +136,11 @@ u8 u8lerp(Vec3B B, u8 x0, u8 x1, u8 x2) {
 }
 
 Pixel lerp(Vec3B B, Vec3Pixel P) {
-	return rgba_to_pixel(
+	return argb_to_pixel(
+		u8lerp(B, pixA(P.p0), pixA(P.p1), pixA(P.p2)),
 		u8lerp(B, pixR(P.p0), pixR(P.p1), pixR(P.p2)),
 		u8lerp(B, pixG(P.p0), pixG(P.p1), pixG(P.p2)),
-		u8lerp(B, pixB(P.p0), pixB(P.p1), pixB(P.p2)),
-		u8lerp(B, pixA(P.p0), pixA(P.p1), pixA(P.p2))
+		u8lerp(B, pixB(P.p0), pixB(P.p1), pixB(P.p2))
 	);
 }
 
@@ -182,14 +182,14 @@ void fbtoximg(Fbuf *fb, XImage *img) {
 enum { WIDTH = 640 };
 enum { HEIGHT = 480 };
 
-Pixel fbufdata[HEIGHT*WIDTH*3] = {0};
+Pixel fbufdata[HEIGHT*WIDTH] = {0};
 
 void draw(Fbuf *fb) {
 	Rect EyeLeft = {
 		{ 20, 100 },
 		{ 160, 100 },
 	};
-	Pixel EyeClr = 0x00FF0000;
+	Pixel EyeClr = 0x00FF00;
 	fb_draw_rect_mirrored_x(fb, EyeLeft, EyeClr);
 
 	Rect SmileBound = {
@@ -198,7 +198,7 @@ void draw(Fbuf *fb) {
 	};
 
 	Vec2 SmileOrigin = {WIDTH/2, 5*HEIGHT/6};
-	Pixel SmileClr = 0xFF000000;
+	Pixel SmileClr = 0xFF0000;
 	fb_draw_parabola(fb, SmileBound, SmileOrigin, -256, SmileClr);
 
 	Rect FbBound = {
@@ -211,9 +211,9 @@ void draw(Fbuf *fb) {
 		{(WIDTH/2) + 60, 210},
 	};
 	Vec3Pixel NoseColors = {
-		0xFFFF0000,
-		0xFF7F3F00,
-		0x7FFF3F00,
+		0xFFFF00,
+		0xFF7F3F,
+		0x7FFF3F,
 	};
 	fb_draw_triangle(fb, FbBound, Nose, NoseColors);
 }
