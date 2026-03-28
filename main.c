@@ -5,7 +5,6 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <X11/extensions/XShm.h>
 
 typedef uint8_t u8;
 typedef uint32_t u32;
@@ -13,8 +12,9 @@ typedef uint64_t u64;
 typedef int32_t i32;
 typedef int64_t i64;
 
-typedef u32 Pixel;
+typedef uint32_t Pixel;
 
+// TODO signed integers are a CPU bug and should not be used :P
 typedef struct vec2_t {
 	i32 x, y;
 } Vec2;
@@ -118,11 +118,16 @@ int barycentric_coords(Vec3B *B, Vec2 dr, Vec2 dr1, Vec2 dr2, i32 D) {
 	i32 D1 = det(dr1, dr);
 	i32 D2 = det(dr, dr2);
 
-	if (i32cmpsign(D, D1) || i32cmpsign(D, D2)) return -1;
-	if (i32modcmp(D1, D) || i32modcmp(D2, D)) return -2;
+	if (
+		   i32cmpsign(D, D1)
+		|| i32cmpsign(D, D2)
+		|| i32modcmp(D1, D)
+		|| i32modcmp(D2, D)
+	) return -1;
+
 	B->b1 = ((i64)D1 * (i64)0xFFFFFFFF) / (i64)D;
 	B->b2 = ((i64)D2 * (i64)0xFFFFFFFF) / (i64)D;
-	if(B->b1 + B->b2 < B->b1) return -1;
+	if(B->b1 + B->b2 < B->b1) return -2;
 	B->b0 = 0xFFFFFFFF - B->b1 - B->b2;
 	return 0;
 }
@@ -264,12 +269,12 @@ int render_to_x(Fbuf *fb) {
 	XWindowAttributes attrs = {0};
 	XGetWindowAttributes(disp, win, &attrs);
 
-	uint8_t* buf = calloc(4*fb->sz.y*fb->sz.x, 1);
+	uint32_t* buf = calloc(fb->sz.y*fb->sz.x, 4);
 	XImage *img = XCreateImage(disp, attrs.visual, attrs.depth, ZPixmap, 0, (char*)buf, WIDTH, HEIGHT, 32, 0);
 	fbtoximg(fb, img);
 	XInitImage(img);
 	if(
-		img->bits_per_pixel != 32
+		   img->bits_per_pixel != 32
 		|| img->red_mask != 0xFF0000
 		|| img->blue_mask != 0xFF
 		|| img->green_mask != 0xFF00
