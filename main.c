@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -215,6 +216,19 @@ void render_to_x(Fbuf *fb) {
 	XMapWindow(disp, win);
 	XSync(disp, False);
 
+	XWindowAttributes attrs = {0};
+	XGetWindowAttributes(disp, win, &attrs);
+
+	char* buf = malloc(4*WIDTH*HEIGHT);
+	for(size_t i = 0; i < 4*WIDTH*HEIGHT; ++i) buf[i] = 0;
+	for(int y = 100; y < 200; ++y)
+		for(int x = 100; x < 200; ++x)
+			buf[4*(WIDTH*y + x) + 2] = 0xFF;
+
+	XImage *img = XCreateImage(disp, attrs.visual, attrs.depth, ZPixmap, 0, buf, WIDTH, HEIGHT, 32, 0);
+	XInitImage(img);
+	XPutImage(disp, win, gc, img, 0, 0, 0, 0, WIDTH, HEIGHT);
+
 	(void)fb;
 	(void)screen;
 	(void)whitepix;
@@ -228,6 +242,7 @@ void render_to_x(Fbuf *fb) {
 		if(ev.type == DestroyNotify) break;
 	}
 
+	free(buf);
 	XCloseDisplay(disp);
 	return;
 }
