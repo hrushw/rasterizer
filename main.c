@@ -13,9 +13,7 @@ typedef uint64_t u64;
 typedef int32_t i32;
 typedef int64_t i64;
 
-typedef struct color_t {
-	u8 r, g, b;
-} Color;
+typedef u32 Pixel;
 
 typedef struct vec2_t {
 	i32 x, y;
@@ -33,32 +31,48 @@ typedef struct triangle_t {
 	Vec2 r0, r1, r2;
 } Triangle;
 
-typedef struct vec3_color_t {
-	Color c0, c1, c2;
-} Vec3Color;
+typedef struct vec3_pixel_t {
+	Pixel p0, p1, p2;
+} Vec3Pixel;
 
 typedef struct fbuf_t {
-	Vec2 sz;
-	u8	*buf;
+	Vec2 	sz;
+	Pixel *buf;
 } Fbuf;
 
-void fb_set_pix(Fbuf *fb, Vec2 r, Color clr) {
-	size_t index = 3*(r.y*fb->sz.x + r.x);
-	fb->buf[index] = clr.r;
-	fb->buf[index + 1] = clr.g;
-	fb->buf[index + 2] = clr.b;
+u8 pixR(Pixel p) {
+	return (p & 0xFF000000) >> 24;
 }
 
-Color fb_get_pix(Fbuf *fb, Vec2 r) {
-	size_t index = 3*(r.y*fb->sz.x + r.x);
-	return (Color) { fb->buf[index], fb->buf[index+1], fb->buf[index+2] };
+u8 pixG(Pixel p) {
+	return (p & 0x00FF0000) >> 16;
 }
 
-void fb_draw_rect(Fbuf *fb, Rect S, Color clr) {
+u8 pixB(Pixel p) {
+	return (p & 0x0000FF00) >>  8;
+}
+
+u8 pixA(Pixel p) {
+	return (p & 0x000000FF);
+}
+
+Pixel rgba_to_pixel(u8 r, u8 g, u8 b, u8 a) {
+	return (r << 24) | (g << 16) | (b << 8) | a;
+}
+
+void fb_set_pix(Fbuf *fb, Vec2 r, Pixel p) {
+	fb->buf[r.y*fb->sz.x + r.x] = p;
+}
+
+Pixel fb_get_pix(Fbuf *fb, Vec2 r) {
+	return fb->buf[r.y*fb->sz.x + r.x];
+}
+
+void fb_draw_rect(Fbuf *fb, Rect S, Pixel p) {
 	Vec2 r;
 	for(r.y = S.r0.y; r.y < S.r0.y + S.sz.y; ++r.y)
 		for(r.x = S.r0.x; r.x < S.r0.x + S.sz.x; ++r.x)
-			fb_set_pix(fb, r, clr);
+			fb_set_pix(fb, r, p);
 }
 
 // This function is Hermetian
@@ -66,22 +80,22 @@ void fb_mirror_rect_x(Fbuf *fb, Rect *rect) {
 	rect->r0.x = fb->sz.x - rect->r0.x - rect->sz.x;
 }
 
-void fb_draw_rect_mirrored_x(Fbuf *fb, Rect rect, Color clr) {
-	fb_draw_rect(fb, rect, clr);
+void fb_draw_rect_mirrored_x(Fbuf *fb, Rect rect, Pixel p) {
+	fb_draw_rect(fb, rect, p);
 	fb_mirror_rect_x(fb, &rect);
-	fb_draw_rect(fb, rect, clr);
+	fb_draw_rect(fb, rect, p);
 }
 
 i32 square(i32 x) {
 	return x*x;
 }
 
-void fb_draw_parabola(Fbuf *fb, Rect bound, Vec2 origin, int a, Color clr) {
+void fb_draw_parabola(Fbuf *fb, Rect bound, Vec2 origin, int a, Pixel p) {
 	Vec2 r;
 	for(r.y = bound.r0.y; r.y < bound.r0.y + bound.sz.y; ++r.y)
 		for(r.x = bound.r0.x; r.x < bound.r0.x + bound.sz.x; ++r.x)
 			if (a*(r.y - origin.y) > square(r.x - origin.x))
-				fb_set_pix(fb, r, clr);
+				fb_set_pix(fb, r, p);
 }
 
 i32 det(Vec2 v0, Vec2 v1) {
@@ -121,15 +135,16 @@ u8 u8lerp(Vec3B B, u8 x0, u8 x1, u8 x2) {
 	) / (u64)0xFFFFFFFF;
 }
 
-Color lerp(Vec3B B, Vec3Color colors) {
-	return (Color) {
-		u8lerp(B, colors.c0.r, colors.c1.r, colors.c2.r),
-		u8lerp(B, colors.c0.g, colors.c1.g, colors.c2.g),
-		u8lerp(B, colors.c0.b, colors.c1.b, colors.c2.b)
-	};
+Pixel lerp(Vec3B B, Vec3Pixel P) {
+	return rgba_to_pixel(
+		u8lerp(B, pixR(P.p0), pixR(P.p1), pixR(P.p2)),
+		u8lerp(B, pixG(P.p0), pixG(P.p1), pixG(P.p2)),
+		u8lerp(B, pixB(P.p0), pixB(P.p1), pixB(P.p2)),
+		u8lerp(B, pixA(P.p0), pixA(P.p1), pixA(P.p2))
+	);
 }
 
-void fb_draw_triangle(Fbuf *fb, Rect bound, Triangle S, Vec3Color colors) {
+void fb_draw_triangle(Fbuf *fb, Rect bound, Triangle S, Vec3Pixel P) {
 	Vec2 dr1 = vec2sub(S.r1, S.r0);
 	Vec2 dr2 = vec2sub(S.r2, S.r0);
 	i32 D = det(dr1, dr2);
@@ -146,14 +161,15 @@ void fb_draw_triangle(Fbuf *fb, Rect bound, Triangle S, Vec3Color colors) {
 			++r.x, ++dr.x
 		)
 			if(!barycentric_coords(&B, dr, dr1, dr2, D))
-				fb_set_pix(fb, r, lerp(B, colors));
+				fb_set_pix(fb, r, lerp(B, P));
 }
 
-void ximgsetpix(Vec2 r, Color clr, XImage *img) {
+void ximgsetpix(Vec2 r, Pixel p, XImage *img) {
 	size_t i = 4*(r.y*img->width + r.x);
-	img->data[i  ] = clr.b;
-	img->data[i+1] = clr.g;
-	img->data[i+2] = clr.r;
+	img->data[i  ] = pixB(p);
+	img->data[i+1] = pixG(p);
+	img->data[i+2] = pixR(p);
+	img->data[i+3] = pixA(p);
 }
 
 void fbtoximg(Fbuf *fb, XImage *img) {
@@ -166,14 +182,14 @@ void fbtoximg(Fbuf *fb, XImage *img) {
 enum { WIDTH = 640 };
 enum { HEIGHT = 480 };
 
-u8 fbufdata[HEIGHT*WIDTH*3] = {0};
+Pixel fbufdata[HEIGHT*WIDTH*3] = {0};
 
 void draw(Fbuf *fb) {
 	Rect EyeLeft = {
 		{ 20, 100 },
 		{ 160, 100 },
 	};
-	Color EyeClr = {0x00, 0xFF, 0x00};
+	Pixel EyeClr = 0x00FF0000;
 	fb_draw_rect_mirrored_x(fb, EyeLeft, EyeClr);
 
 	Rect SmileBound = {
@@ -182,7 +198,7 @@ void draw(Fbuf *fb) {
 	};
 
 	Vec2 SmileOrigin = {WIDTH/2, 5*HEIGHT/6};
-	Color SmileClr = {0xFF, 0, 0};
+	Pixel SmileClr = 0xFF000000;
 	fb_draw_parabola(fb, SmileBound, SmileOrigin, -256, SmileClr);
 
 	Rect FbBound = {
@@ -194,19 +210,31 @@ void draw(Fbuf *fb) {
 		{(WIDTH/2) - 60, 210},
 		{(WIDTH/2) + 60, 210},
 	};
-	Vec3Color NoseColors = {
-		{0xFF, 0xFF, 0x00},
-		{0xFF, 0x7F, 0x3F},
-		{0x7F, 0xFF, 0x3F},
+	Vec3Pixel NoseColors = {
+		0xFFFF0000,
+		0xFF7F3F00,
+		0x7FFF3F00,
 	};
 	fb_draw_triangle(fb, FbBound, Nose, NoseColors);
+}
+
+void fb_to_ppm(FILE *f, Fbuf *fb) {
+	Pixel p;
+	uint8_t pixbuf[3];
+	for(i32 i = 0; i < fb->sz.x*fb->sz.y; ++i) {
+		p = fb->buf[i];
+		pixbuf[0] = pixR(p);
+		pixbuf[1] = pixG(p);
+		pixbuf[2] = pixB(p);
+		fwrite(pixbuf, 3, 1, f);
+	}
 }
 
 void render_to_ppm(Fbuf *fb) {
 	const char* fname = "gaem.ppm";
 	FILE* f = fopen(fname, "wb");
 	fprintf(f, "P6\n%d %d 255\n", WIDTH, HEIGHT);
-	fwrite(fb->buf, 1, WIDTH*HEIGHT*3, f);
+	fb_to_ppm(f, fb);
 }
 
 int render_to_x(Fbuf *fb) {
