@@ -18,6 +18,8 @@ typedef int64_t i64;
 
 typedef uint32_t Pixel;
 
+#define U32MAX UINT32_MAX
+
 // TODO signed integers are a CPU bug and should not be used :P
 typedef struct vec2_t {
 	i32 x, y;
@@ -93,14 +95,11 @@ void fb_draw_rect(Fbuf *fb, Rect S, Pixel p) {
 			fb_set_pix(fb, r, p);
 }
 
-void fb_mirror_rect_x(Fbuf *fb, Rect *rect) {
-	rect->r0.x = fb->sz.x - rect->r0.x - rect->sz.x;
-}
-
-void fb_draw_rect_mirrored_x(Fbuf *fb, Rect rect, Pixel p) {
-	fb_draw_rect(fb, rect, p);
-	fb_mirror_rect_x(fb, &rect);
-	fb_draw_rect(fb, rect, p);
+Rect fb_mirror_rect_x(Fbuf *fb, Rect R) {
+	return (Rect) {
+		(UVec2) { fb->sz.x - R.r0.x - R.sz.x, R.r0.y },
+		R.sz
+	};
 }
 
 i32 i32square(i32 x) {
@@ -144,9 +143,9 @@ int barycentric_coords(Vec3B *B, i32 D, i32 D1, i32 D2) {
 		|| i32modcmp(D2, D)
 	) return -1;
 
-	B->b1 = ((i64)D1 * (i64)0xFFFFFFFF) / (i64)D;
-	B->b2 = ((i64)D2 * (i64)0xFFFFFFFF) / (i64)D;
-	B->b0 = 0xFFFFFFFF - B->b1 - B->b2;
+	B->b1 = ((i64)D1 * (i64)U32MAX) / (i64)D;
+	B->b2 = ((i64)D2 * (i64)U32MAX) / (i64)D;
+	B->b0 = U32MAX - B->b1 - B->b2;
 
 	return B->b1 + B->b2 < B->b1 ? -2 : 0;
 }
@@ -156,7 +155,7 @@ u8 u8lerp(Vec3B B, u8 x0, u8 x1, u8 x2) {
 		(u64)x0*(u64)B.b0 +
 		(u64)x1*(u64)B.b1 +
 		(u64)x2*(u64)B.b2
-	) / (u64)0xFFFFFFFF;
+	) / (u64)U32MAX;
 }
 
 Pixel lerp(Vec3B B, Vec3Pixel P) {
@@ -178,12 +177,12 @@ void fb_draw_triangle(Fbuf *fb, Rect bound, Triangle S, Vec3Pixel P) {
 	Vec3B B;
 
 	for(
-		r.y = bound.r0.y, dr.y = (i32)bound.r0.y - (i32)S.r0.y;
+		r.y = bound.r0.y, dr.y = (i32)r.y - (i32)S.r0.y;
 		r.y < bound.r0.y + bound.sz.y;
 		++r.y, ++dr.y
 	)
 		for(
-			r.x = bound.r0.x, dr.x = (i32)bound.r0.x - (i32)S.r0.x;
+			r.x = bound.r0.x, dr.x = (i32)r.x - (i32)S.r0.x;
 			r.x < bound.r0.x + bound.sz.x;
 			++r.x, ++dr.x
 		)
@@ -216,7 +215,10 @@ void draw(Fbuf *fb) {
 		{ 160, 100 },
 	};
 	Pixel EyeClr = 0x00FF00;
-	fb_draw_rect_mirrored_x(fb, EyeLeft, EyeClr);
+	fb_draw_rect(fb, EyeLeft, EyeClr);
+
+	Rect EyeRight = fb_mirror_rect_x(fb, EyeLeft);
+	fb_draw_rect(fb, EyeRight, EyeClr);
 
 	Rect SmileBound = {
 		{0, fb->sz.y/2},
@@ -225,6 +227,7 @@ void draw(Fbuf *fb) {
 
 	UVec2 SmileOrigin = {fb->sz.x/2, 5*fb->sz.y/6};
 	Pixel SmileClr = 0xFF0000;
+
 	fb_draw_parabola(fb, SmileBound, SmileOrigin, -256, SmileClr);
 
 	Rect FbBound = {
@@ -241,6 +244,7 @@ void draw(Fbuf *fb) {
 		0xFF7F3F,
 		0x7FFF3F,
 	};
+
 	fb_draw_triangle(fb, FbBound, Nose, NoseColors);
 }
 
@@ -259,6 +263,7 @@ void fb_to_ppm(FILE *f, Fbuf *fb) {
 void render_to_ppm(Fbuf *fb) {
 	const char* fname = "gaem.ppm";
 	FILE* f = fopen(fname, "wb");
+
 	fprintf(f, "P6\n%d %d 255\n", fb->sz.x, fb->sz.y);
 	fb_to_ppm(f, fb);
 }
@@ -270,13 +275,13 @@ int crwin_X(
 	unsigned long width, unsigned long height
 ) {
 	XVisualInfo vinfo = {0};
-	if(!XMatchVisualInfo(disp, DefaultScreen(disp), 24, TrueColor, &vinfo))
-		return fprintf(stderr, "Unable to get proper visual!\n"), -1;
-
 	XSetWindowAttributes xswattrs = {
 		.background_pixel = BlackPixel(disp, DefaultScreen(disp)),
 		.event_mask = evmask
 	};
+
+	if(!XMatchVisualInfo(disp, DefaultScreen(disp), 24, TrueColor, &vinfo))
+		return fprintf(stderr, "Unable to get proper visual!\n"), -1;
 
 	*win = XCreateWindow(
 		disp, DefaultRootWindow(disp),
@@ -290,19 +295,23 @@ int crwin_X(
 	return 0;
 }
 
-int render_to_x_disp(Display *disp, Fbuf *fb) {
+int render_to_x_disp(Fbuf *fb, Display *disp) {
 	Window win;
 	XWindowAttributes attrs;
-
 	long evmask = StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask;
+	uint32_t *buf;
+	XImage *img;
+	XEvent ev;
+	struct timespec dt = { 0, 166666667 };
+
 	if(crwin_X(
 		&win, &attrs,
 		disp, evmask,
 		fb->sz.x, fb->sz.y
 	)) return -1;
 
-	uint32_t* buf = calloc(fb->sz.y*fb->sz.x, 4);
-	XImage *img = XCreateImage(disp, attrs.visual, attrs.depth, ZPixmap, 0, (char*)buf, fb->sz.x, fb->sz.y, 32, 0);
+	buf = calloc(fb->sz.y*fb->sz.x, 4);
+	img = XCreateImage(disp, attrs.visual, attrs.depth, ZPixmap, 0, (char*)buf, fb->sz.x, fb->sz.y, 32, 0);
 	fbtoximg(fb, img);
 	XInitImage(img);
 	if(
@@ -313,8 +322,6 @@ int render_to_x_disp(Display *disp, Fbuf *fb) {
 	)
 		return fprintf(stderr, "Invalid image format!\n"), -2;
 
-	XEvent ev;
-	struct timespec dt = { 0, 166666667 };
 	while(1) {
 		while(XCheckWindowEvent(disp, win, evmask, &ev)) {
 			if(ev.type == DestroyNotify)
@@ -340,7 +347,7 @@ int render_to_x_disp(Display *disp, Fbuf *fb) {
 int render_to_x(Fbuf *fb) {
 	Display *disp = XOpenDisplay(NULL);
 
-	if(render_to_x_disp(disp, fb)) return -1;
+	if(render_to_x_disp(fb, disp)) return -1;
 
 	XCloseDisplay(disp);
 	return 0;
