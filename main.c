@@ -24,7 +24,8 @@ typedef struct vec3b_t {
 } Vec3B;
 
 typedef struct rect_t {
-	Vec2 r0, sz;
+	Vec2 r0;
+	Vec2 sz;
 } Rect;
 
 typedef struct triangle_t {
@@ -75,7 +76,6 @@ void fb_draw_rect(Fbuf *fb, Rect S, Pixel p) {
 			fb_set_pix(fb, r, p);
 }
 
-// This function is Hermetian
 void fb_mirror_rect_x(Fbuf *fb, Rect *rect) {
 	rect->r0.x = fb->sz.x - rect->r0.x - rect->sz.x;
 }
@@ -184,11 +184,6 @@ void fbtoximg(Fbuf *fb, XImage *img) {
 			ximgsetpix(r, fb_get_pix(fb, r), img);
 }
 
-enum { WIDTH = 640 };
-enum { HEIGHT = 480 };
-
-Pixel fbufdata[HEIGHT*WIDTH] = {0};
-
 void draw(Fbuf *fb) {
 	Rect EyeLeft = {
 		{ 20, 100 },
@@ -198,22 +193,22 @@ void draw(Fbuf *fb) {
 	fb_draw_rect_mirrored_x(fb, EyeLeft, EyeClr);
 
 	Rect SmileBound = {
-		{0, HEIGHT/2},
-		{WIDTH, HEIGHT/3}
+		{0, fb->sz.y/2},
+		{fb->sz.x, fb->sz.y/3}
 	};
 
-	Vec2 SmileOrigin = {WIDTH/2, 5*HEIGHT/6};
+	Vec2 SmileOrigin = {fb->sz.x/2, 5*fb->sz.y/6};
 	Pixel SmileClr = 0xFF0000;
 	fb_draw_parabola(fb, SmileBound, SmileOrigin, -256, SmileClr);
 
 	Rect FbBound = {
 		{0, 0},
-		{WIDTH, HEIGHT}
+		fb->sz
 	};
 	Triangle Nose = {
-		{WIDTH/2, 160},
-		{(WIDTH/2) - 60, 210},
-		{(WIDTH/2) + 60, 210},
+		{fb->sz.x/2, 160},
+		{(fb->sz.x/2) - 60, 210},
+		{(fb->sz.x/2) + 60, 210},
 	};
 	Vec3Pixel NoseColors = {
 		0xFFFF00,
@@ -238,7 +233,7 @@ void fb_to_ppm(FILE *f, Fbuf *fb) {
 void render_to_ppm(Fbuf *fb) {
 	const char* fname = "gaem.ppm";
 	FILE* f = fopen(fname, "wb");
-	fprintf(f, "P6\n%d %d 255\n", WIDTH, HEIGHT);
+	fprintf(f, "P6\n%d %d 255\n", fb->sz.x, fb->sz.y);
 	fb_to_ppm(f, fb);
 }
 
@@ -253,15 +248,16 @@ int render_to_x(Fbuf *fb) {
 	if(!XMatchVisualInfo(disp, scrnu, 24, TrueColor, &vinfo))
 		return fprintf(stderr, "Unable to get proper visual!\n"), -1;
 
-	XSetWindowAttributes xswattrs = {0};
-	xswattrs.background_pixel = blackpix;
-	xswattrs.event_mask = StructureNotifyMask | ExposureMask;
+	XSetWindowAttributes xswattrs = {
+		.background_pixel = blackpix,
+		.event_mask = StructureNotifyMask | ExposureMask,
+	};
 
 	Window win = XCreateWindow(
 		disp, root,
-		0, 0, WIDTH, HEIGHT,
+		0, 0, fb->sz.x, fb->sz.y,
 		0, 24, InputOutput,
-		vinfo.visual /*change*/, CWEventMask | CWBackPixel, &xswattrs
+		vinfo.visual, CWEventMask | CWBackPixel, &xswattrs
 	);
 	XMapWindow(disp, win);
 	XSync(disp, False);
@@ -270,7 +266,7 @@ int render_to_x(Fbuf *fb) {
 	XGetWindowAttributes(disp, win, &attrs);
 
 	uint32_t* buf = calloc(fb->sz.y*fb->sz.x, 4);
-	XImage *img = XCreateImage(disp, attrs.visual, attrs.depth, ZPixmap, 0, (char*)buf, WIDTH, HEIGHT, 32, 0);
+	XImage *img = XCreateImage(disp, attrs.visual, attrs.depth, ZPixmap, 0, (char*)buf, fb->sz.x, fb->sz.y, 32, 0);
 	fbtoximg(fb, img);
 	XInitImage(img);
 	if(
@@ -288,7 +284,7 @@ int render_to_x(Fbuf *fb) {
 			break;
 
 		if(ev.type == Expose)
-			XPutImage(disp, win, gc, img, 0, 0, 0, 0, WIDTH, HEIGHT);
+			XPutImage(disp, win, gc, img, 0, 0, 0, 0, fb->sz.x, fb->sz.y);
 	}
 
 	free(buf);
@@ -297,6 +293,11 @@ int render_to_x(Fbuf *fb) {
 }
 
 int main() {
+	enum { WIDTH = 640 };
+	enum { HEIGHT = 480 };
+
+	static Pixel fbufdata[HEIGHT*WIDTH] = {0};
+
 	Fbuf fb = { {WIDTH, HEIGHT}, fbufdata };
 	draw(&fb);
 	render_to_ppm(&fb);
