@@ -29,14 +29,19 @@ typedef struct uvec2_t {
 	u32 x, y;
 } UVec2;
 
-typedef struct vec3b_t {
-	u32 b0, b1, b2;
-} Vec3B;
+typedef struct fbuf_t {
+	UVec2 	sz;
+	Pixel *buf;
+} Fbuf;
 
 typedef struct rect_t {
 	Vec2 r0;
 	UVec2 sz;
 } Rect;
+
+typedef struct vec3b_t {
+	u32 b0, b1, b2;
+} Vec3B;
 
 typedef struct triangle_t {
 	Vec2 r0, r1, r2;
@@ -45,11 +50,6 @@ typedef struct triangle_t {
 typedef struct vec3_pixel_t {
 	Pixel p0, p1, p2;
 } Vec3Pixel;
-
-typedef struct fbuf_t {
-	UVec2 	sz;
-	Pixel *buf;
-} Fbuf;
 
 typedef struct circle_t {
 	Vec2 r0;
@@ -191,12 +191,14 @@ PtStatus getlerpweights(Vec3B *B, i32 D, i32 D1, i32 D2) {
 
 // TODO faster function for monochrome triangles?
 void fb_draw_triangle(Fbuf *fb, Triangle S, Vec3Pixel P) {
-	Vec2 dr1 = vec2sub(S.r1, S.r0);
-	Vec2 dr2 = vec2sub(S.r2, S.r0);
-	i32 D = vec2det(dr1, dr2);
+	i32 D;
 	UVec2 r;
 	Vec2 dr;
 	Vec3B B;
+
+	S.r1 = vec2sub(S.r1, S.r0);
+	S.r2 = vec2sub(S.r2, S.r0);
+	D = vec2det(S.r1, S.r2);
 
 	for(
 		r.y = 0, dr.y = (i32)r.y - (i32)S.r0.y;
@@ -208,13 +210,13 @@ void fb_draw_triangle(Fbuf *fb, Triangle S, Vec3Pixel P) {
 			r.x < fb->sz.x;
 			++r.x, ++dr.x
 		)
-			if(getlerpweights(&B, D, vec2det(dr1, dr), vec2det(dr, dr2)) == PT_IN)
+			if(getlerpweights(&B, D, vec2det(S.r1, dr), vec2det(dr, S.r2)) == PT_IN)
 				fb_set_pix(fb, r, lerp(B, P));
 }
 
 Rect fb_mirror_rect_x(Fbuf *fb, Rect R) {
 	return (Rect) {
-		(Vec2) { (i32)fb->sz.x - R.r0.x - R.sz.x, R.r0.y },
+		{ (i32)fb->sz.x - R.r0.x - R.sz.x, R.r0.y },
 		R.sz
 	};
 }
@@ -293,6 +295,7 @@ int crwin_X(
 	return 0;
 }
 
+// TODO cleanup
 int render_to_x_disp(Fbuf *fb, Display *disp) {
 	Window win;
 	XWindowAttributes attrs;
