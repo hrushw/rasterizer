@@ -335,7 +335,7 @@ int render_to_x_disp(Fbuf *fb, Display *disp) {
 	)
 		return fprintf(stderr, "Invalid image format!\n"), -2;
 
-	Circle EyeballLeft = { {40, 150}, 20 }, EyeballRight = EyeballLeft;
+	Circle EyeballLeft = { {fb->sz.x/16, 5*fb->sz.y/16}, fb->sz.x/32 }, EyeballRight = EyeballLeft;
 	int dir = 1;
 	while(1) {
 		// Handle events
@@ -357,11 +357,11 @@ int render_to_x_disp(Fbuf *fb, Display *disp) {
 		fb_draw_circle(fb, EyeballLeft, 0x00FF00);
 		fb_draw_circle(fb, EyeballRight, 0x00FF00);
 		if(dir) EyeballLeft.r0.x += 10; else EyeballLeft.r0.x -= 10;
-		if(EyeballLeft.r0.x > 180 - (i32)EyeballLeft.R)
-			EyeballLeft.r0.x = 180 - (i32)EyeballLeft.R,
+		if(EyeballLeft.r0.x > 9*fb->sz.x/32 - (i32)EyeballLeft.R)
+			EyeballLeft.r0.x = 9*fb->sz.x/32 - (i32)EyeballLeft.R,
 			dir = 0;
-		else if(EyeballLeft.r0.x < 40)
-			EyeballLeft.r0.x = 40,
+		else if(EyeballLeft.r0.x < fb->sz.x/16)
+			EyeballLeft.r0.x = fb->sz.x/16,
 			dir = 1;
 		EyeballRight.r0.x = fb->sz.x - EyeballLeft.r0.x;
 		fb_draw_circle(fb, EyeballLeft, 0x00007F);
@@ -393,8 +393,8 @@ int render_to_x(Fbuf *fb) {
 // TODO drawing independent of framebuffer size
 void draw(Fbuf *fb) {
 	Rect EyeLeft = {
-		{ 20, 100 },
-		{ 160, 100 },
+		{ fb->sz.x/32, 10*fb->sz.y/48 },
+		{ fb->sz.x/4, 10*fb->sz.y/48 },
 	};
 	Pixel EyeClr = 0x00FF00;
 	fb_draw_rect(fb, EyeLeft, EyeClr);
@@ -413,9 +413,9 @@ void draw(Fbuf *fb) {
 	fb_draw_parabola_bounded(fb, SmileBound, SmileOrigin, -256, SmileClr);
 
 	Triangle Nose = {
-		{fb->sz.x/2, 160},
-		{(fb->sz.x/2) - 60, 210},
-		{(fb->sz.x/2) + 60, 210},
+		{fb->sz.x/2, fb->sz.y/3},
+		{13*fb->sz.x/32, 7*fb->sz.y/16},
+		{19*fb->sz.x/32, 7*fb->sz.y/16},
 	};
 	Vec3Pixel NoseColors = {
 		0xFFFF00,
@@ -428,15 +428,15 @@ void draw(Fbuf *fb) {
 }
 
 int main() {
-	enum win_width_e { WIDTH = 640 };
-	enum win_height_e { HEIGHT = 480 };
+	enum win_width_e { WIDTH = 320 };
+	enum win_height_e { HEIGHT = 240 };
 
 	static Pixel fbufdata[HEIGHT*WIDTH] = {0};
 
-	i32Complex z1 = { 0, I32MAX };
-	i32Complex z2 = { I32MAX/2, I32MAX/4 };
-	i32Complex z = i32complex_mul_norm(z1, z2);
-	printf("%d %d\n", z.x, z.y);
+	i32Complex I = { 0, I32MAX };
+	i32Complex z0 = { 300, 400 };
+	i32Complex z1 = i32complex_mul_norm(z0, I);
+	printf("%d %d\n", z1.x, z1.y);
 
 	Fbuf fb = { { WIDTH, HEIGHT }, fbufdata };
 	draw(&fb);
