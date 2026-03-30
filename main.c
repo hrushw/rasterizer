@@ -240,26 +240,8 @@ void fb_draw_parabola_bounded(Fbuf *fb, Rect bound, UVec2 origin, i32 a, Pixel p
 				fb_set_pix(fb, r, p);
 }
 
+
 /* framebuffer export functions (to X11 window or PPM file) */
-static
-void ximgsetpix_bgra(XImage *img, size_t i, Pixel p) {
-	img->data[i  ] = pixB(p);
-	img->data[i+1] = pixG(p);
-	img->data[i+2] = pixR(p);
-	img->data[i+3] = pixA(p);
-}
-
-void fbtoximg(Fbuf *fb, XImage *img) {
-	UVec2 r;
-	for(r.y = 0; r.y < fb->sz.y; ++r.y)
-		for(r.x = 0; r.x < fb->sz.x; ++r.x)
-			ximgsetpix_bgra(
-				img,
-				4*(r.y*img->width + r.x),
-				fb_get_pix(fb, r)
-			);
-}
-
 void fb_to_ppm(FILE *f, Fbuf *fb) {
 	Pixel p;
 	u8 pixbuf[3];
@@ -280,8 +262,74 @@ void render_to_ppm(Fbuf *fb) {
 	fb_to_ppm(f, fb);
 }
 
-// get a valid window and its attributes
-int crwin_X(
+static
+void ximgsetpix_bgra(XImage *img, size_t i, Pixel p) {
+	img->data[i  ] = pixB(p);
+	img->data[i+1] = pixG(p);
+	img->data[i+2] = pixR(p);
+	img->data[i+3] = pixA(p);
+}
+
+void fbtoximg(Fbuf *fb, XImage *img) {
+	UVec2 r;
+	for(r.y = 0; r.y < fb->sz.y; ++r.y)
+		for(r.x = 0; r.x < fb->sz.x; ++r.x)
+			ximgsetpix_bgra(
+				img,
+				4*(r.y*img->width + r.x),
+				fb_get_pix(fb, r)
+			);
+}
+
+/* X11 handling functions */
+int handle_events_x(Display *disp, Window win, long evmask) {
+	XEvent ev;
+	while(XCheckWindowEvent(disp, win, evmask, &ev)) {
+		if(ev.type == DestroyNotify)
+			return -1;
+
+		if(ev.type == Expose)
+			(void)0;
+
+		if(ev.type == KeyPress)
+			printf("Key press detected!\n");
+
+		if(ev.type == KeyRelease)
+			printf("Key release detected!\n");
+	}
+	return 0;
+}
+
+void render_to_x_win_img(Fbuf *fb, Display *disp, Window win, long evmask, XImage *img) {
+	struct timespec dt = { 0, 166666667 };
+	Circle EyeballLeft = { {fb->sz.x/16, 5*fb->sz.y/16}, fb->sz.x/32 }, EyeballRight = EyeballLeft;
+	int dir = 1;
+	while(!handle_events_x(disp, win, evmask)) {
+		// Handle events
+		// Eye motion logic
+		fb_draw_circle(fb, EyeballLeft, 0x00FF00);
+		fb_draw_circle(fb, EyeballRight, 0x00FF00);
+		if(dir) EyeballLeft.r0.x += 10; else EyeballLeft.r0.x -= 10;
+		if(EyeballLeft.r0.x > 9*(i32)fb->sz.x/32 - (i32)EyeballLeft.R)
+			EyeballLeft.r0.x = 9*fb->sz.x/32 - (i32)EyeballLeft.R,
+			dir = 0;
+		else if(EyeballLeft.r0.x < (i32)fb->sz.x/16)
+			EyeballLeft.r0.x = fb->sz.x/16,
+			dir = 1;
+		EyeballRight.r0.x = fb->sz.x - EyeballLeft.r0.x;
+		fb_draw_circle(fb, EyeballLeft, 0x00007F);
+		fb_draw_circle(fb, EyeballRight, 0x00007F);
+
+		// draw image to window
+		fbtoximg(fb, img);
+		XPutImage(disp, win, DefaultGC(disp, DefaultScreen(disp)), img, 0, 0, 0, 0, fb->sz.x, fb->sz.y);
+
+		// sleep for 1 frame
+		nanosleep(&dt, NULL);
+	}
+}
+
+int crwin_x(
 	Window *win, XWindowAttributes *attrs,
 	Display *disp, long evmask,
 	unsigned long width, unsigned long height
@@ -307,25 +355,12 @@ int crwin_X(
 	return 0;
 }
 
-// TODO cleanup
-int render_to_x_disp(Fbuf *fb, Display *disp) {
-	Window win;
-	XWindowAttributes attrs;
-	long evmask = StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask;
-	u32 *buf;
-	XImage *img;
-	XEvent ev;
-	struct timespec dt = { 0, 166666667 };
-
-	if(crwin_X(
-		&win, &attrs,
-		disp, evmask,
-		fb->sz.x, fb->sz.y
-	)) return -1;
-
-	// Create XImage structure 
-	buf = calloc(fb->sz.y*fb->sz.x, 4);
-	img = XCreateImage(disp, attrs.visual, attrs.depth, ZPixmap, 0, (char*)buf, fb->sz.x, fb->sz.y, 32, 0);
+int render_to_x_win(Fbuf *fb, Display *disp, Window win, XWindowAttributes attrs, long evmask) {
+	XImage *img = XCreateImage(
+		disp, attrs.visual, attrs.depth, ZPixmap, 0,
+		calloc(fb->sz.y*fb->sz.x, 4),
+		fb->sz.x, fb->sz.y, 32, 0
+	);
 	XInitImage(img);
 	if(
 		   img->bits_per_pixel != 32
@@ -333,64 +368,33 @@ int render_to_x_disp(Fbuf *fb, Display *disp) {
 		|| img->blue_mask != 0xFF
 		|| img->green_mask != 0xFF00
 	)
-		return fprintf(stderr, "Invalid image format!\n"), -2;
+		return fprintf(stderr, "Invalid image format!\n"), -1;
 
-	Circle EyeballLeft = { {fb->sz.x/16, 5*fb->sz.y/16}, fb->sz.x/32 }, EyeballRight = EyeballLeft;
-	int dir = 1;
-	while(1) {
-		// Handle events
-		while(XCheckWindowEvent(disp, win, evmask, &ev)) {
-			if(ev.type == DestroyNotify)
-				goto end;
+	render_to_x_win_img(fb, disp, win, evmask, img);
 
-			if(ev.type == Expose)
-				(void)0;
-
-			if(ev.type == KeyPress)
-				printf("Key press detected!\n");
-
-			if(ev.type == KeyRelease)
-				printf("Key release detected!\n");
-		}
-
-		// Eye motion logic
-		fb_draw_circle(fb, EyeballLeft, 0x00FF00);
-		fb_draw_circle(fb, EyeballRight, 0x00FF00);
-		if(dir) EyeballLeft.r0.x += 10; else EyeballLeft.r0.x -= 10;
-		if(EyeballLeft.r0.x > 9*fb->sz.x/32 - (i32)EyeballLeft.R)
-			EyeballLeft.r0.x = 9*fb->sz.x/32 - (i32)EyeballLeft.R,
-			dir = 0;
-		else if(EyeballLeft.r0.x < fb->sz.x/16)
-			EyeballLeft.r0.x = fb->sz.x/16,
-			dir = 1;
-		EyeballRight.r0.x = fb->sz.x - EyeballLeft.r0.x;
-		fb_draw_circle(fb, EyeballLeft, 0x00007F);
-		fb_draw_circle(fb, EyeballRight, 0x00007F);
-
-		// draw image to window
-		fbtoximg(fb, img);
-		XPutImage(disp, win, DefaultGC(disp, DefaultScreen(disp)), img, 0, 0, 0, 0, fb->sz.x, fb->sz.y);
-
-		// sleep for 1 frame
-		nanosleep(&dt, NULL);
-	}
-
-	end:
-	free(buf);
+	free(img->data);
 	return 0;
 }
 
 int render_to_x(Fbuf *fb) {
 	Display *disp = XOpenDisplay(NULL);
+	Window win;
+	XWindowAttributes attrs;
+	long evmask = StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask;
 
-	if(render_to_x_disp(fb, disp)) return -1;
+	if(crwin_x(
+		&win, &attrs,
+		disp, evmask,
+		fb->sz.x, fb->sz.y
+	)) return -1;
+
+	if(render_to_x_win(fb, disp, win, attrs, evmask)) return -2;
 
 	XCloseDisplay(disp);
 	return 0;
 }
 
 /* Main drawing function */
-// TODO drawing independent of framebuffer size
 void draw(Fbuf *fb) {
 	Rect EyeLeft = {
 		{ fb->sz.x/32, 10*fb->sz.y/48 },
@@ -428,8 +432,8 @@ void draw(Fbuf *fb) {
 }
 
 int main() {
-	enum win_width_e { WIDTH = 320 };
-	enum win_height_e { HEIGHT = 240 };
+	enum win_width_e { WIDTH = 640 };
+	enum win_height_e { HEIGHT = 480 };
 
 	static Pixel fbufdata[HEIGHT*WIDTH] = {0};
 
