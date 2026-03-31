@@ -490,8 +490,29 @@ void draw(Fbuf fb) {
 		{ 100, 200 }
 	};
 
-	// TODO more tests for bounds checking
 	fb_draw_rect(fb, outofboundrect, 0xFF00FF);
+
+	Rect Goatee = {
+		{ 7*fb.sz.x/16, 7*fb.sz.y/8 },
+		{ fb.sz.x/8, fb.sz.y/2 }
+	};
+	fb_draw_rect(fb, Goatee, 0xFFFFFF);
+
+	Triangle BrowLeft = {
+		{ 5*fb.sz.x/32, (i32)fb.sz.y/12 },
+		{ fb.sz.x/32, -1*(i32)fb.sz.y/24 },
+		{ 9*fb.sz.x/32, -1*(i32)fb.sz.y/24 },
+	}, BrowRight = BrowLeft;
+	BrowRight.r0.x = fb.sz.x - BrowLeft.r0.x;
+	BrowRight.r1.x = fb.sz.x - BrowLeft.r1.x;
+	BrowRight.r2.x = fb.sz.x - BrowLeft.r2.x;
+	Vec3Pixel BrowColor = {
+		0x7F7F00,
+		0x7F7F00,
+		0x7F7F00,
+	};
+	fb_draw_triangle(fb, BrowLeft, BrowColor);
+	fb_draw_triangle(fb, BrowRight, BrowColor);
 }
 
 int main() {
