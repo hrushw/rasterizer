@@ -508,8 +508,8 @@ void draw(Fbuf fb) {
 	BrowRight.r2.x = fb.sz.x - BrowLeft.r2.x;
 	Vec3Pixel BrowColor = {
 		0x7F7F00,
-		0x7F7F00,
-		0x7F7F00,
+		0x3F3F00,
+		0x3F3F00,
 	};
 	fb_draw_triangle(fb, BrowLeft, BrowColor);
 	fb_draw_triangle(fb, BrowRight, BrowColor);
