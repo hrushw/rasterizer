@@ -71,8 +71,8 @@ typedef struct circle_t {
 
 i32Complex i32complex_mul_norm(i32Complex z1, i32Complex z2) {
 	return (i32Complex) {
-		((i64)z1.x * (i64)z2.x - (i64)z1.y * (i64)z2.y) / (i64)I32MAX,
-		((i64)z1.x * (i64)z2.y + (i64)z1.y * (i64)z2.x) / (i64)I32MAX,
+		((i64)z1.x * (i64)z2.x - (i64)z1.y * (i64)z2.y) >> 30,
+		((i64)z1.x * (i64)z2.y + (i64)z1.y * (i64)z2.x) >> 30,
 	};
 }
 
@@ -206,7 +206,7 @@ u8 u8lerp(UVec3B B, u8 x0, u8 x1, u8 x2) {
 		(u64)x0*(u64)B.b0 +
 		(u64)x1*(u64)B.b1 +
 		(u64)x2*(u64)B.b2
-	) / (u64)U32MAX;
+	) >> 31;
 }
 
 static
@@ -244,17 +244,27 @@ bool checkptstatus(i32 D, i32 D1, i32 D2) {
 
 UVec3B getlerpweights(i32 D, i32 D1, i32 D2) {
 	UVec3B B;
-	B.b1 = ((i64)D1 * (i64)U32MAX) / (i64)D;
-	B.b2 = ((i64)D2 * (i64)U32MAX) / (i64)D;
-	B.b0 = U32MAX - B.b1 - B.b2;
+	B.b1 = ((i64)D1 << 31) / (i64)D;
+	B.b2 = ((i64)D2 << 31) / (i64)D;
+	B.b0 = (1 << 31) - B.b1 - B.b2;
 
 	return B;
 }
 
-
 static
 bool checkptstatus_dr(i32 D, Vec2 dr, Vec2 dr1, Vec2 dr2) {
 	return checkptstatus(D, vec2det(dr1, dr), vec2det(dr, dr2));
+}
+
+static
+void fb_set_pix_lerped(Fbuf fb, UVec2 r, Vec3Pixel P, i32 D, i32 D1, i32 D2) {
+	if(checkptstatus(D, D1, D2))
+		fb_set_pix(fb, r, lerp(getlerpweights(D, D1, D2), P));
+}
+
+static
+void fb_set_pix_lerped_dr(Fbuf fb, UVec2 r, Vec3Pixel P, i32 D, Vec2 dr, Vec2 dr1, Vec2 dr2) {
+	fb_set_pix_lerped(fb, r, P, D, vec2det(dr1, dr), vec2det(dr, dr2));
 }
 
 void fb_draw_triangle(Fbuf fb, Triangle S, Pixel p) {
@@ -268,17 +278,6 @@ void fb_draw_triangle(Fbuf fb, Triangle S, Pixel p) {
 		for(r.x = 0; r.x < fb.sz.x; ++r.x)
 			if(checkptstatus_dr(D, uv2v2sub(r, S.r0), S.r1, S.r2))
 				fb_set_pix(fb, r, p);
-}
-
-static
-void fb_set_pix_lerped(Fbuf fb, UVec2 r, Vec3Pixel P, i32 D, i32 D1, i32 D2) {
-	if(checkptstatus(D, D1, D2))
-		fb_set_pix(fb, r, lerp(getlerpweights(D, D1, D2), P));
-}
-
-static
-void fb_set_pix_lerped_dr(Fbuf fb, UVec2 r, Vec3Pixel P, i32 D, Vec2 dr, Vec2 dr1, Vec2 dr2) {
-	fb_set_pix_lerped(fb, r, P, D, vec2det(dr1, dr), vec2det(dr, dr2));
 }
 
 void fb_draw_triangle_lerped(Fbuf fb, Triangle S, Vec3Pixel P) {
@@ -537,7 +536,7 @@ int main() {
 
 	static Pixel fbufdata[HEIGHT*WIDTH] = {0};
 
-	i32Complex I = { 0, I32MAX };
+	i32Complex I = { 0, 1 << 30 };
 	i32Complex z0 = { 300, 400 };
 	i32Complex z1 = i32complex_mul_norm(z0, I);
 	printf("%d %d\n", z1.x, z1.y);
