@@ -119,12 +119,6 @@ Pixel fb_get_pix(Fbuf fb, UVec2 r) {
 	return fb.buf[r.y*fb.sz.x + r.x];
 }
 
-/* Integer operations */
-static inline
-u32 i32restrict0(i32 a, u32 max) {
-	return a > 0 ? (a < (i32)max ? a : (i32)max-1) : 0;
-}
-
 static inline
 u64 i32square(i32 x) {
 	return (u64)((i64)x*(i64)x);
