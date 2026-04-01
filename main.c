@@ -27,6 +27,8 @@ typedef struct vec2_t {
 	int32_t x, y;
 } Vec2;
 typedef Vec2 i32Complex;
+typedef Vec2 Triangle[3];
+typedef Vec2 Quad[4];
 
 typedef struct uvec2_t {
 	u32 x, y;
@@ -51,33 +53,13 @@ i32Complex i32complex_mul_norm(i32Complex z1, i32Complex z2) {
 
 /* Pixel ARGB access functions */
 static inline
-u8 pixA(Pixel p) {
-	return (p >> 24) & 0xFF;
-}
-
+u8 pixA(Pixel p) { return (p >> 24) & 0xFF; }
 static inline
-u8 pixR(Pixel p) {
-	return (p >> 16) & 0xFF;
-}
-
+u8 pixR(Pixel p) { return (p >> 16) & 0xFF; }
 static inline
-u8 pixG(Pixel p) {
-	return (p >> 8) & 0xFF;
-}
-
+u8 pixG(Pixel p) { return (p >> 8) & 0xFF; }
 static inline
-u8 pixB(Pixel p) {
-	return p & 0xFF;
-}
-
-Pixel argb_to_pixel(u8 a, u8 r, u8 g, u8 b) {
-	return
-		  ((Pixel)a << 24)
-		| ((Pixel)r << 16)
-		| ((Pixel)g <<  8)
-		|  (Pixel)b
-	;
-}
+u8 pixB(Pixel p) { return p & 0xFF; }
 
 /* Framebuffer pixel access functions */
 static inline
@@ -97,6 +79,7 @@ i64 vec2det(Vec2 v0, Vec2 v1) {
 }
 
 /* Drawing functions */
+static
 UVec2 rect_bound_min0(Vec2 r0) {
 	return (UVec2) {
 		r0.x < 0 ? 0 : (u32)r0.x,
@@ -104,6 +87,7 @@ UVec2 rect_bound_min0(Vec2 r0) {
 	};
 }
 
+static
 UVec2 rect_bound_max(Fbuf fb, Vec2 r0, UVec2 sz) {
 	return (UVec2) {(
 		r0.x += sz.x,
@@ -118,6 +102,7 @@ UVec2 rect_bound_max(Fbuf fb, Vec2 r0, UVec2 sz) {
 	)};
 }
 
+static
 void fb_draw_rect_uvec2x2(Fbuf fb, Pixel p, UVec2 r0, UVec2 r1) {
 	UVec2 r;
 	for(r.y = r0.y; r.y < r1.y; ++r.y)
@@ -125,6 +110,7 @@ void fb_draw_rect_uvec2x2(Fbuf fb, Pixel p, UVec2 r0, UVec2 r1) {
 			fb_set_pix(fb, r, p);
 }
 
+static
 void fb_draw_rect(Fbuf fb, Pixel p, Vec2 r0, UVec2 sz) {
 	fb_draw_rect_uvec2x2(fb, p, rect_bound_min0(r0), rect_bound_max(fb, r0, sz));
 }
@@ -134,6 +120,7 @@ u64 i32square(i32 x) {
 	return (u64)((i64)x*(i64)x);
 }
 
+static
 void fb_draw_circle(Fbuf fb, Pixel p, u32 R, Vec2 r0) {
 	UVec2 r;
 	for(r.y = 0; r.y < fb.sz.y; ++r.y)
@@ -142,11 +129,13 @@ void fb_draw_circle(Fbuf fb, Pixel p, u32 R, Vec2 r0) {
 				fb_set_pix(fb, r, p);
 }
 
+static
 bool checkptstatus(i64 D, i64 D1, i64 D2) {
 	if(D < 0) D = -D, D1 = -D1, D2 = -D2;
 	return !(D1 < 0 || D2 < 0 || (u64)D1 + (u64)D2 > (u64)D);
 }
 
+static
 void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
 	i64 D1 = - vec2det(r0, r2);
 	i64 D2 = - vec2det(r1, r0);
@@ -165,16 +154,19 @@ void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
 				fb_set_pix(fb, r, p);
 }
 
-void fb_draw_quad(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2, Vec2 r3) {
-	fb_draw_triangle(fb, p, r0, r1, r2);
-	fb_draw_triangle(fb, p, r0, r3, r2);
+static
+void fb_draw_quad(Fbuf fb, Pixel p, Quad q) {
+	fb_draw_triangle(fb, p, q[0], q[1], q[2]);
+	fb_draw_triangle(fb, p, q[0], q[3], q[2]);
 }
 
+static
 void fb_draw_polygon_strip(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
 	for(size_t i = 0; i < n-2; ++i)
 		fb_draw_triangle(fb, p, pts[i], pts[i+1], pts[i+2]);
 }
 
+static
 void fb_draw_polygon_fan(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
 	for(size_t i = 0; i < n-2; ++i)
 		fb_draw_triangle(fb, p, pts[0], pts[i+1], pts[i+2]);
@@ -231,6 +223,13 @@ typedef enum possible_errors_x_e {
 	ERR_IMG_FMT,
 } WIN_ERROR_X;
 
+int handle_errors_x(Display *disp, XErrorEvent *err) {
+	(void)disp;
+	(void)err;
+	printf("X11 Error (unspecified due to laziness)\n");
+	return 0;
+}
+
 /* X11 handling functions */
 int handle_events_x(Display *disp, Window win, long evmask) {
 	XEvent ev;
@@ -255,24 +254,24 @@ void render_to_x_win_img(
 ) {
 	struct timespec dt = { 0, 166666667 };
 	Vec2 EyeballLeftOrigin = {fb.sz.x/16, 5*fb.sz.y/16};
-	u32 EyeRadius = fb.sz.x/32;
+	u32 EyeballRadius = fb.sz.x/32;
 	Vec2 EyeballRightOrigin = EyeballLeftOrigin;
 	EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
 	int dir = 1;
 	while(!handle_events_x(disp, win, evmask)) {
 		// Eye motion logic
-		fb_draw_circle(fb, 0x00FF00, EyeRadius, EyeballLeftOrigin);
-		fb_draw_circle(fb, 0x00CF3F, EyeRadius, EyeballRightOrigin);
+		fb_draw_circle(fb, 0x00FF00, EyeballRadius, EyeballLeftOrigin);
+		fb_draw_circle(fb, 0x00CF3F, EyeballRadius, EyeballRightOrigin);
 		if(dir) EyeballLeftOrigin.x += 10; else EyeballLeftOrigin.x -= 10;
-		if(EyeballLeftOrigin.x > 9*(i32)fb.sz.x/32 - (i32)EyeRadius)
-			EyeballLeftOrigin.x = 9*fb.sz.x/32 - (i32)EyeRadius,
+		if(EyeballLeftOrigin.x > 9*(i32)fb.sz.x/32 - (i32)EyeballRadius)
+			EyeballLeftOrigin.x = 9*fb.sz.x/32 - (i32)EyeballRadius,
 			dir = 0;
 		else if(EyeballLeftOrigin.x < (i32)fb.sz.x/16)
 			EyeballLeftOrigin.x = fb.sz.x/16,
 			dir = 1;
 		EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
-		fb_draw_circle(fb, 0x00007F, EyeRadius, EyeballLeftOrigin);
-		fb_draw_circle(fb, 0x00007F, EyeRadius, EyeballRightOrigin);
+		fb_draw_circle(fb, 0x00007F, EyeballRadius, EyeballLeftOrigin);
+		fb_draw_circle(fb, 0x00007F, EyeballRadius, EyeballRightOrigin);
 
 		fbtoximg(fb, img);
 		XPutImage(disp, win, DefaultGC(disp, DefaultScreen(disp)), img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
@@ -337,6 +336,7 @@ int render_to_x_disp(Fbuf fb, Display *disp) {
 }
 
 int render_to_x(Fbuf fb) {
+	XSetErrorHandler(handle_errors_x);
 	Display *disp = XOpenDisplay(NULL);
 	if(!disp) return ERR_OPEN_DISPLAY;
 
@@ -359,14 +359,14 @@ void draw(Fbuf fb) {
 		(i32)fb.sz.x - EyeLeft.r0.x - EyeLeft.sz.x,
 		EyeLeft.r0.y
 	};
-	Vec2 EyeRightQuad[4] = {
+	Quad EyeRight = {
 		EyeRightOrigin,
 		{ EyeRightOrigin.x - fb.sz.x/64,   EyeRightOrigin.y + EyeLeft.sz.y },
 		{ EyeRightOrigin.x + EyeLeft.sz.x, EyeRightOrigin.y + EyeLeft.sz.y - fb.sz.x/32 },
 		{ EyeRightOrigin.x + EyeLeft.sz.x, EyeRightOrigin.y },
 	};
 	Pixel EyeRightClr = 0x00CF3F;
-	fb_draw_quad(fb, EyeRightClr, EyeRightQuad[0], EyeRightQuad[1], EyeRightQuad[2], EyeRightQuad[3]);
+	fb_draw_quad(fb, EyeRightClr, EyeRight);
 
 	Vec2 Smilepts[] = {
 		{fb.sz.x/2, fb.sz.y/2},
@@ -387,7 +387,7 @@ void draw(Fbuf fb) {
 
 	fb_draw_polygon_fan(fb, SmileClr, sizeof(Smilepts)/sizeof(Vec2), Smilepts);
 
-	Vec2 Nose[3] = {
+	Triangle Nose = {
 		{fb.sz.x/2, fb.sz.y/3},
 		{13*fb.sz.x/32, 7*fb.sz.y/16},
 		{19*fb.sz.x/32, 7*fb.sz.y/16},
@@ -404,18 +404,15 @@ void draw(Fbuf fb) {
 	};
 	fb_draw_rect(fb, 0xFFFFFF, Goatee.r0, Goatee.sz);
 
-	Vec2 BrowLeft[3] = {
+	Triangle BrowLeft = {
 		{ 5*fb.sz.x/32, (i32)fb.sz.y/12 },
 		{ fb.sz.x/32, -1*(i32)fb.sz.y/24 },
 		{ 9*fb.sz.x/32, -1*(i32)fb.sz.y/24 },
-	}, BrowRight[3];
-	BrowRight[0].x = fb.sz.x - BrowLeft[0].x;
-	BrowRight[1].x = fb.sz.x - BrowLeft[1].x;
-	BrowRight[2].x = fb.sz.x - BrowLeft[2].x;
-
-	BrowRight[0].y = BrowLeft[0].y;
-	BrowRight[1].y = BrowLeft[1].y;
-	BrowRight[2].y = BrowLeft[2].y;
+	}, BrowRight = {
+		{ fb.sz.x - BrowLeft[0].x, BrowLeft[0].y },
+		{ fb.sz.x - BrowLeft[1].x, BrowLeft[1].y },
+		{ fb.sz.x - BrowLeft[2].x, BrowLeft[2].y },
+	};
 
 	Pixel BrowColor = 0x7F3F00;
 	fb_draw_triangle(fb, BrowColor, BrowLeft[0], BrowLeft[1], BrowLeft[2]);
