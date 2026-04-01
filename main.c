@@ -199,8 +199,7 @@ void fb_draw_circle(Fbuf fb, Circle S, Pixel p) {
 
 bool checkptstatus(i32 D, i32 D1, i32 D2) {
 	if(D < 0) D = -D, D1 = -D1, D2 = -D2;
-	return (D1 < 0 || D2 < 0 || (u32)D1 + (u32)D2 > (u32)D)
-		? false : true ;
+	return !(D1 < 0 || D2 < 0 || (u32)D1 + (u32)D2 > (u32)D);
 }
 
 UVec3B getlerpweights(i32 D, i32 D1, i32 D2) {
@@ -228,24 +227,32 @@ void fb_set_pix_lerped_dr(Fbuf fb, UVec2 r, Vec3Pixel P, i32 D, Vec2 dr, Vec2 dr
 	fb_set_pix_lerped(fb, r, P, D, vec2det(dr1, dr), vec2det(dr, dr2));
 }
 
-void fb_draw_triangle(Fbuf fb, Triangle S, Pixel p) {
-	S.r1 = vec2sub(S.r1, S.r0);
-	S.r2 = vec2sub(S.r2, S.r0);
-	i32 D = vec2det(S.r1, S.r2);
+void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
+	r1 = vec2sub(r1, r0);
+	r2 = vec2sub(r2, r0);
+	i32 D = vec2det(r1, r2);
 	if(!D) return;
 
 	UVec2 r;
 	for(r.y = 0; r.y < fb.sz.y; ++r.y)
 		for(r.x = 0; r.x < fb.sz.x; ++r.x)
-			if(checkptstatus_dr(D, uv2v2sub(r, S.r0), S.r1, S.r2))
+			if(checkptstatus_dr(D, uv2v2sub(r, r0), r1, r2))
 				fb_set_pix(fb, r, p);
 }
 
 void fb_draw_quad(Fbuf fb, Quad S, Pixel p) {
-	Triangle S_ = { S.r0, S.r1, S.r2 };
-	fb_draw_triangle(fb, S_, p);
-	S_ = (Triangle) { S.r0, S.r3, S.r2 };
-	fb_draw_triangle(fb, S_, p);
+	fb_draw_triangle(fb, p, S.r0, S.r1, S.r2);
+	fb_draw_triangle(fb, p, S.r0, S.r3, S.r2);
+}
+
+void fb_draw_array_strip(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
+	for(size_t i = 0; i < n-2; ++i)
+		fb_draw_triangle(fb, p, pts[i], pts[i+1], pts[i+2]);
+}
+
+void fb_draw_array_fan(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
+	for(size_t i = 0; i < n-2; ++i)
+		fb_draw_triangle(fb, p, pts[0], pts[i+1], pts[i+2]);
 }
 
 void fb_draw_triangle_lerped(Fbuf fb, Triangle S, Vec3Pixel P) {
@@ -266,14 +273,6 @@ Rect fb_mirror_rect_x(Fbuf fb, Rect R) {
 		{ (i32)fb.sz.x - R.r0.x - R.sz.x, R.r0.y },
 		R.sz
 	};
-}
-
-void fb_draw_parabola_bounded(Fbuf fb, UVec2x2 bound, Vec2 origin, i32 a, Pixel p) {
-	UVec2 r;
-	for(r.y = bound.r0.y; r.y < bound.r1.y; ++r.y)
-		for(r.x = bound.r0.x; r.x < bound.r1.x; ++r.x)
-			if ((i64)a*((i64)r.y - (i64)origin.y) > (i64)i32square(r.x - origin.x))
-				fb_set_pix(fb, r, p);
 }
 
 /* framebuffer export functions (to X11 window or PPM file) */
@@ -459,15 +458,24 @@ void draw(Fbuf fb) {
 	Pixel EyeRightClr = 0x00CF3F;
 	fb_draw_quad(fb, EyeRightQuad, EyeRightClr);
 
-	UVec2x2 SmileBound = {
-		{0, fb.sz.y/2},
-		{fb.sz.x, 5*fb.sz.y/6}
+	Vec2 Smilepts[] = {
+		{fb.sz.x/2, fb.sz.y/2},
+		{3*fb.sz.x/16, fb.sz.y/2},
+		{7*fb.sz.x/32, 5*fb.sz.y/8},
+		{fb.sz.x/4, 11*fb.sz.y/16},
+		{5*fb.sz.x/16, 9*fb.sz.y/12},
+		{13*fb.sz.x/32, 49*fb.sz.y/60},
+		{15*fb.sz.x/32, 5*fb.sz.y/6},
+		{17*fb.sz.x/32, 5*fb.sz.y/6},
+		{19*fb.sz.x/32, 49*fb.sz.y/60},
+		{11*fb.sz.x/16, 9*fb.sz.y/12},
+		{3*fb.sz.x/4, 11*fb.sz.y/16},
+		{25*fb.sz.x/32, 5*fb.sz.y/8},
+		{13*fb.sz.x/16, fb.sz.y/2},
 	};
-
-	Vec2 SmileOrigin = {fb.sz.x/2, 5*fb.sz.y/6};
 	Pixel SmileClr = 0xFF0000;
 
-	fb_draw_parabola_bounded(fb, SmileBound, SmileOrigin, -256, SmileClr);
+	fb_draw_array_fan(fb, SmileClr, sizeof(Smilepts)/sizeof(Vec2), Smilepts);
 
 	Triangle Nose = {
 		{fb.sz.x/2, fb.sz.y/3},
@@ -505,8 +513,8 @@ void draw(Fbuf fb) {
 	BrowRight.r2.x = fb.sz.x - BrowLeft.r2.x;
 
 	Pixel BrowColor = 0x7F3F00;
-	fb_draw_triangle(fb, BrowLeft, BrowColor);
-	fb_draw_triangle(fb, BrowRight, BrowColor);
+	fb_draw_triangle(fb, BrowColor, BrowLeft.r0, BrowLeft.r1, BrowLeft.r2);
+	fb_draw_triangle(fb, BrowColor, BrowRight.r0, BrowRight.r1, BrowRight.r2);
 }
 
 int main() {
