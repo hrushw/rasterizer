@@ -316,6 +316,17 @@ void fbtoximg(Fbuf fb, XImage *img) {
 			);
 }
 
+typedef enum possible_errors_x_e {
+	ERR_SUCCESS = 0,
+	ERR_OPEN_DISPLAY,
+	ERR_GET_VISUAL,
+	ERR_GETWINATTRS,
+	ERR_MAP_WIN,
+	ERR_CR_IMG,
+	ERR_IMG_INIT,
+	ERR_IMG_FMT,
+} WIN_ERROR_X;
+
 /* X11 handling functions */
 int handle_events_x(Display *disp, Window win, long evmask) {
 	XEvent ev;
@@ -368,95 +379,63 @@ int render_to_x_win(
 	Fbuf fb, Display *disp, Window win,
 	long evmask, XImage *img
 ) {
-	if(!img) return -1;
-	XInitImage(img);
-
+	if(!XInitImage(img))
+		return ERR_IMG_INIT;
 	if(img->bits_per_pixel != 32
 		|| img->red_mask != 0xFF0000
 		|| img->blue_mask != 0xFF
 		|| img->green_mask != 0xFF00
-	) return fprintf(stderr, "Invalid image format!\n"), -2;
+	) return ERR_IMG_FMT;
 
 	render_to_x_win_img(fb, disp, win, img, evmask);
 
 	free(img->data);
-	// don't touch my data Xlib you disgusting creature, you did not allocate it
-	img->data = NULL;
+	img->data = NULL; // don't touch my data Xlib you disgusting creature, you did not allocate it
 
-	XDestroyImage(img);
-	return 0;
+	return ERR_SUCCESS;
 }
 
-typedef enum possible_errors_x_e {
-	ERR_SUCCESS = 0,
-	ERR_OPEN_DISPLAY,
-	ERR_GET_VISUAL,
-	ERR_CR_WIN,
-	ERR_GETWINATTRS,
-	ERR_MAP_WIN
-} WIN_ERROR_X;
-
-int getvis_x(Visual **vis, Display *disp) {
+int render_to_x_disp(Fbuf fb, Display *disp) {
 	XVisualInfo vinfo = {0};
+	XWindowAttributes attrs;
 
 	if(!XMatchVisualInfo(disp, DefaultScreen(disp), 24, TrueColor, &vinfo))
 		return ERR_GET_VISUAL;
 
-	*vis = vinfo.visual;
-	return ERR_SUCCESS;
-}
-
-int crwin_x(
-	Window *win, XWindowAttributes *attrs,
-	Display *disp, Visual *vis,
-	unsigned long width, unsigned long height
-) {
-	XSetWindowAttributes xswattrs = {
-		.background_pixel = BlackPixel(disp, DefaultScreen(disp)),
-		.event_mask = StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask
-	};
-
-	*win = XCreateWindow(
+	Window win = XCreateSimpleWindow(
 		disp, DefaultRootWindow(disp),
-		0, 0, width, height,
-		0, 24, InputOutput,
-		vis, CWEventMask | CWBackPixel, &xswattrs
+		0, 0, fb.sz.x, fb.sz.y, 0, 0,
+		BlackPixel(disp, DefaultScreen(disp))
 	);
-	if(!win) return ERR_CR_WIN;
+	XSelectInput(disp, win, StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask);
 
-	if(!XGetWindowAttributes(disp, *win, attrs))
+	if(!XGetWindowAttributes(disp, win, &attrs))
 		return ERR_GETWINATTRS;
-
-	if(!XMapWindow(disp, *win))
+	if(!XMapWindow(disp, win))
 		return ERR_MAP_WIN;
-	return 0;
+
+	XImage *img = XCreateImage(
+		disp, attrs.visual, attrs.depth, ZPixmap, 0,
+		calloc(fb.sz.y*fb.sz.x, 4),
+		fb.sz.x, fb.sz.y, 32, 0
+	);
+	if(!img) return ERR_CR_IMG;
+
+	int ret = render_to_x_win(
+		fb, disp, win,
+		attrs.your_event_mask, img
+	);
+
+	XDestroyImage(img);
+	return ret;
 }
 
 int render_to_x(Fbuf fb) {
-	Display *disp;
-	Visual *vis;
-	Window win;
-	XWindowAttributes attrs;
-	int ret;
+	Display *disp = XOpenDisplay(NULL);
+	if(!disp) return ERR_OPEN_DISPLAY;
 
-	if(!(disp = XOpenDisplay(NULL)))
-		return ERR_OPEN_DISPLAY;
+	int ret = render_to_x_disp(fb, disp);
 
-	if((ret = getvis_x(&vis, disp)) != ERR_SUCCESS)
-		goto end;
-
-	if(!(ret = crwin_x(&win, &attrs, disp, vis, fb.sz.x, fb.sz.y)))
-		ret = render_to_x_win(
-			fb, disp, win,
-			attrs.your_event_mask,
-			XCreateImage(
-				disp, attrs.visual, attrs.depth, ZPixmap, 0,
-				calloc(fb.sz.y*fb.sz.x, 4),
-				fb.sz.x, fb.sz.y, 32, 0
-			)
-		);
-
-	end:
 	XCloseDisplay(disp);
 	return ret;
 }
