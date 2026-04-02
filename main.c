@@ -71,7 +71,7 @@ Pixel fb_get_pix(Fbuf fb, UVec2 r) {
 	return fb.buf[r.y*fb.sz.x + r.x];
 }
 
-/* Vector Operations */
+// determinant
 static inline
 i64 vec2det(Vec2 v0, Vec2 v1) {
 	return (i64)v0.x*(i64)v1.y - (i64)v1.x*(i64)v0.y;
@@ -91,13 +91,13 @@ UVec2 rect_bound_max(Fbuf fb, Vec2 r0, UVec2 sz) {
 	return (UVec2) {(
 		r0.x += sz.x,
 		r0.x > (i32)fb.sz.x
-			? (i32)fb.sz.x
-			: r0.x < 0 ? 0 : r0.x
+			? fb.sz.x
+			: r0.x < 0 ? 0 : (u32)r0.x
 	), (
 		r0.y += sz.y,
 		r0.y > (i32)fb.sz.y
-			? (i32)fb.sz.y
-			: r0.y < 0 ? 0 : r0.y
+			? fb.sz.y
+			: r0.y < 0 ? 0 : (u32)r0.y
 	)};
 }
 
@@ -244,14 +244,14 @@ typedef struct window_properties_x_t {
 	XImage *img;
 } WinProps_X;
 
-void window_cleanup_x(WinProps_X wp) {
-	switch(wp.stage) {
+void window_cleanup_x(WinProps_X *wp) {
+	switch(wp->stage) {
 	case STAGE_IMG:
-		free(wp.img->data);
-		wp.img->data = NULL; // don't touch my data Xlib you disgusting creature, you did not allocate it
-		XDestroyImage(wp.img);
+		free(wp->img->data);
+		wp->img->data = NULL; // don't touch my data Xlib you disgusting creature, you did not allocate it
+		XDestroyImage(wp->img);
 	case STAGE_DISPLAY:
-		XCloseDisplay(wp.disp);
+		XCloseDisplay(wp->disp);
 	case STAGE_NONE:
 	default: break;
 	}
@@ -324,6 +324,7 @@ void handle_events_x(WinProps_X *wp) {
 	}
 }
 
+// TODO merge this function into draw() somehow
 void render_to_x_win_img(Fbuf fb, WinProps_X *wp) {
 	struct timespec dt = { 0, 16666667 };
 	Vec2 EyeballLeftOrigin = {fb.sz.x/16, 5*fb.sz.y/16};
@@ -353,15 +354,6 @@ void render_to_x_win_img(Fbuf fb, WinProps_X *wp) {
 		nanosleep(&dt, NULL);
 		handle_events_x(wp);
 	}
-}
-
-WinError_X render_to_x(Fbuf fb) {
-	WinProps_X wp = window_init_x(fb.sz.x, fb.sz.y);
-	if(wp.status == ERR_SUCCESS)
-		render_to_x_win_img(fb, &wp);
-
-	window_cleanup_x(wp);
-	return wp.status;
 }
 
 /* Main drawing function */
@@ -450,8 +442,13 @@ int main() {
 
 	Fbuf fb = { { WIDTH, HEIGHT }, fbufdata };
 	draw(fb);
-	render_to_ppm(fb);
-	if(render_to_x(fb)) return -1;
 
-	return 0;
+	WinProps_X wp = window_init_x(fb.sz.x, fb.sz.y);
+	if(wp.status == ERR_SUCCESS)
+		render_to_x_win_img(fb, &wp);
+
+	window_cleanup_x(&wp);
+	render_to_ppm(fb);
+
+	return wp.status;
 }
