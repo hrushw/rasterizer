@@ -17,6 +17,8 @@ typedef uint64_t u64;
 typedef int32_t i32;
 typedef int64_t i64;
 
+typedef struct timespec Timespec;
+
 typedef uint32_t Pixel;
 typedef uint32_t Angle;
 
@@ -179,14 +181,14 @@ void fb_draw_quad(Fbuf fb, Pixel p, Quad q) {
 }
 
 static
-void fb_draw_polygon_strip(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
-	for(size_t i = 0; i < n-2; ++i)
+void fb_draw_polygon_strip(Fbuf fb, Pixel p, u32 n, Vec2 *pts) {
+	for(u32 i = 0; i < n-2; ++i)
 		fb_draw_triangle(fb, p, pts[i], pts[i+1], pts[i+2]);
 }
 
 static
-void fb_draw_polygon_fan(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
-	for(size_t i = 0; i < n-2; ++i)
+void fb_draw_polygon_fan(Fbuf fb, Pixel p, u32 n, Vec2 *pts) {
+	for(u32 i = 0; i < n-2; ++i)
 		fb_draw_triangle(fb, p, pts[0], pts[i+1], pts[i+2]);
 }
 
@@ -324,19 +326,38 @@ WinProps_X window_init_x(Fbuf fb) {
 	return wp.status = ERR_SUCCESS, wp;
 }
 
-void get_time_diff(clockid_t clk, struct timespec *t) {
-	struct timespec end;
-	clock_gettime(clk, &end);
-	t->tv_sec = end.tv_sec - t->tv_sec;
-	if(t->tv_nsec > end.tv_nsec)
-		t->tv_nsec = end.tv_nsec + 1000000000 - t->tv_nsec;
-	else
-		t->tv_nsec = end.tv_nsec - t->tv_nsec;
+Timespec get_timespec_cur(clockid_t clk) {
+	Timespec ts;
+	clock_gettime(clk, &ts);
+	return ts;
 }
 
-void get_timespec_diff(struct timespec *t, u32 nsmax) {
-	if(t->tv_sec || t->tv_nsec > nsmax) t->tv_sec = t->tv_nsec = 0;
-	else t->tv_nsec = nsmax - t->tv_nsec;
+Timespec get_timespec_diff(Timespec t1, Timespec t0) {
+	if(t1.tv_sec < t0.tv_sec)
+		return (Timespec) {0, 0};
+	t1.tv_sec -= t0.tv_sec;
+
+	if(t1.tv_nsec < t0.tv_nsec)
+		return t1.tv_sec
+			? (Timespec) {t1.tv_sec - 1, t1.tv_nsec + 1000000000 - t0.tv_nsec}
+			: (Timespec) {0, 0};
+
+	return t1.tv_nsec -= t0.tv_nsec, t1;
+}
+
+void handle_events_x(WinProps_X *wp) {
+	XEvent ev;
+	while(XCheckWindowEvent(wp->disp, wp->win, wp->attrs.your_event_mask, &ev))
+		switch(ev.type) {
+			case DestroyNotify:
+				wp->closed = 1; return;
+			case Expose: break;
+			case KeyPress:
+				printf("Key press detected!\n"); break;
+			case KeyRelease:
+				printf("Key release detected!\n"); break;
+			default: break;
+		}
 }
 
 /* Main drawing function */
@@ -413,7 +434,6 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	fb_draw_triangle_arr(fb, BrowColor, BrowRight);
 
 	enum { FRAME_NS = 16666667 };
-	struct timespec dt;
 
 	Vec2 EyeballLeftOrigin = {fb.sz.x/16, 5*fb.sz.y/16};
 	u32 EyeballRadius = fb.sz.x/32;
@@ -422,7 +442,10 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
 	int dir = 1;
 
-	clock_gettime(CLOCK_MONOTONIC, &dt);
+	Timespec ts_dtmax = {0, FRAME_NS},
+		ts_begin = get_timespec_cur(CLOCK_MONOTONIC),
+		ts_cur = ts_begin,
+		ts_rel, ts_dt;
 	while(!wp->closed) {
 		// Eye motion logic
 		fb_draw_circle(fb, EyeLeftClr, EyeballRadius, EyeballLeftOrigin);
@@ -440,28 +463,18 @@ void draw(Fbuf fb, WinProps_X *wp) {
 
 		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), &wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
-		get_time_diff(CLOCK_MONOTONIC, &dt);
-		get_timespec_diff(&dt, FRAME_NS);
-		// printf("0.%09ld s\r", dt.tv_nsec);
-		// fflush(stdout);
+		ts_dt = get_timespec_diff(get_timespec_cur(CLOCK_MONOTONIC), ts_cur);
+		ts_dt = get_timespec_diff(ts_dtmax, ts_dt);
+		nanosleep(&ts_dt, NULL);
+		ts_cur = get_timespec_cur(CLOCK_MONOTONIC);
+		ts_rel = get_timespec_diff(ts_cur, ts_begin);
 
-		nanosleep(&dt, NULL);
-		clock_gettime(CLOCK_MONOTONIC, &dt);
+		printf("%ld.%09ld : 0.%09ld s\r", ts_rel.tv_sec, ts_rel.tv_nsec, ts_dt.tv_nsec);
+		fflush(stdout);
 
-		XEvent ev;
-		while(XCheckWindowEvent(wp->disp, wp->win, wp->attrs.your_event_mask, &ev))
-			switch(ev.type) {
-				case DestroyNotify:
-					wp->closed = 1;
-					return;
-				case Expose: break;
-				case KeyPress:
-					printf("Key press detected!\n"); break;
-				case KeyRelease:
-					printf("Key release detected!\n"); break;
-				default: break;
-			}
+		handle_events_x(wp);
 	}
+	printf("\n");
 }
 
 int main() {
