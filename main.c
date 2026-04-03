@@ -121,19 +121,21 @@ u64 i32square(i32 x) {
 	return (u64)((i64)x*(i64)x);
 }
 
+static inline
+u32 u32min(u32 a, u32 b) {
+	return a < b ? a : b;
+}
+
+static inline
+i32 u32min0(i32 a) {
+	return a > 0 ? a : 0;
+}
+
 static
 void fb_draw_circle(Fbuf fb, Pixel p, u32 R, Vec2 r0) {
 	UVec2 r;
-	for(
-		r.y = r0.y > (i32)R ? r0.y - (i32)R : 0;
-		r.y < fb.sz.y && r.y < (u32)r0.y + R;
-		++r.y
-	)
-		for(
-			r.x = r0.x > (i32)R ? r0.x - (i32)R : 0;
-			r.x < fb.sz.x && r.x < (u32)r0.x + R;
-			++r.x
-		)
+	for(r.y = u32min0(r0.y - (i32)R); r.y < u32min(fb.sz.y, (u32)r0.y + R); ++r.y)
+		for(r.x = u32min0(r0.x - (i32)R); r.x < u32min(fb.sz.x, (u32)r0.x + R); ++r.x)
 			if(i32square(r.y - r0.y) + i32square(r.x - r0.x) < i32square(R))
 				fb_set_pix(fb, r, p);
 }
@@ -145,6 +147,7 @@ int checkptstatus(i64 D, i64 D1, i64 D2) {
 	return (D1 < 0 || D2 < 0 || (u64)D1 + (u64)D2 > (u64)D);
 }
 
+// TODO bounds checking
 static
 void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
 	i64 D1 = - vec2det(r0, r2);
@@ -413,6 +416,7 @@ void draw(Fbuf fb, WinProps_X *wp) {
 
 		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), &wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
+		// TODO more accurate sleep
 		nanosleep(&dt, NULL);
 
 		XEvent ev;
