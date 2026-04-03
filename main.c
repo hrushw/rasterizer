@@ -124,8 +124,16 @@ u64 i32square(i32 x) {
 static
 void fb_draw_circle(Fbuf fb, Pixel p, u32 R, Vec2 r0) {
 	UVec2 r;
-	for(r.y = 0; r.y < fb.sz.y; ++r.y)
-		for(r.x = 0; r.x < fb.sz.x; ++r.x)
+	for(
+		r.y = r0.y > (i32)R ? r0.y - (i32)R : 0;
+		r.y < fb.sz.y && r.y < (u32)r0.y + R;
+		++r.y
+	)
+		for(
+			r.x = r0.x > (i32)R ? r0.x - (i32)R : 0;
+			r.x < fb.sz.x && r.x < (u32)r0.x + R;
+			++r.x
+		)
 			if(i32square(r.y - r0.y) + i32square(r.x - r0.x) < i32square(R))
 				fb_set_pix(fb, r, p);
 }

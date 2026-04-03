@@ -2,8 +2,8 @@ CC=gcc
 # warn about failure to inline functions
 # warn when using variable-length arrays
 # warn about all cases of overflow
-# enforce 2s complement signed arithmetic
 WFLAGS=-Wall -Wextra -Wpedantic -Wvla -Winline -Wstrict-overflow=5 -Wshift-overflow=2
+# enforce 2s complement signed arithmetic
 CFLAGS=-fwrapv
 LFLAGS=-lX11 -lXext
 
