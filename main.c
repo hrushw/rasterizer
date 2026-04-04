@@ -198,12 +198,12 @@ void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
 	fb_draw_triangle_bounded(fb, p, bound.r0, bound.r1, r0, vec2sub(r1, r0), vec2sub(r2, r0));
 }
 
-static
+static inline
 void fb_draw_triangle_arr(Fbuf fb, Pixel p, Triangle S) {
 	fb_draw_triangle(fb, p, S[0], S[1], S[2]);
 }
 
-static
+static inline
 void fb_draw_quad(Fbuf fb, Pixel p, Quad q) {
 	fb_draw_triangle(fb, p, q[0], q[1], q[2]);
 	fb_draw_triangle(fb, p, q[0], q[3], q[2]);
@@ -428,14 +428,32 @@ static
 void fb_draw_u64_bitmap(Fbuf fb, Pixel p, UVec2 r, u64 bmp) {
 	for(u8 i = 0; i < 64; ++i)
 		if((bmp >> i) & 1)
-			fb_set_pix(fb, (UVec2) {r.x + i % 8, r.y + i / 8}, p);
+			fb_set_pix(fb, (UVec2) {r.x + i%8, r.y + i/8}, p);
 }
 
-static void fb_draw_u64_bitmaps_x(Fbuf fb, Pixel p, UVec2 r, u32 n, u64 *bmps) {
+static
+void fb_draw_u64_bitmap_scaled(Fbuf fb, Pixel p, u32 scale, UVec2 r, u64 bmp) {
+	for(u8 i = 0; i < 64; ++i)
+		if((bmp >> i) & 1)
+			for(u32 y = 0; y < scale; ++y)
+				for(u32 x = 0; x < scale; ++x)
+					fb_set_pix(fb, (UVec2) {r.x + (i%8)*scale + x, r.y + (i/8)*scale + y}, p);
+}
+
+static
+void fb_draw_u64_bitmaps_x(Fbuf fb, Pixel p, UVec2 r, u32 n, u64 *bmps) {
 	if(r.x + n*8 > fb.sz.x) return;
 
 	for(u32 i = 0; i < n; ++i, r.x += 8)
 		fb_draw_u64_bitmap(fb, p, r, bmps[i]);
+}
+
+static
+void fb_draw_u64_bitmaps_x_scaled(Fbuf fb, Pixel p, u32 scale, UVec2 r, u32 n, u64 *bmps) {
+	if(r.x + scale*n*8 > fb.sz.x) return;
+
+	for(u32 i = 0; i < n; ++i, r.x += 8*scale)
+		fb_draw_u64_bitmap_scaled(fb, p, scale, r, bmps[i]);
 }
 
 /* Main drawing function */
@@ -521,7 +539,9 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		fb_draw_rect(fb, 0xFF00FF, (Vec2) {-200, -300}, (UVec2) {100, 200});
 		fb_draw_rect(fb, 0xFFFFFF, Goatee.r0, Goatee.sz);
 		fb_draw_triangles(fb, 0x7F3F00, 6, Brows);
-		fb_draw_u64_bitmaps_x(fb, 0xFF00FF, textr0, sizeof(txt)/sizeof(u64), txt);
+
+		fb_draw_u64_bitmaps_x(fb, 0xFF00FF, (UVec2){textr0.x - 20, textr0.y - 20}, sizeof(txt)/sizeof(u64), txt);
+		fb_draw_u64_bitmaps_x_scaled(fb, 0xFF00FF, 3, textr0, sizeof(txt)/sizeof(u64), txt);
 
 		// get time in milliseconds
 		EyeballLeftPos.x = EyeLeft.r0.x + EyeballRadius + posx;
