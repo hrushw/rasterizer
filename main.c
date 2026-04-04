@@ -138,19 +138,28 @@ int checkptstatus(i64 D, i64 D1, i64 D2) {
 // TODO bounds checking
 static
 void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
+	Vec2 rbegin = {280, 140};
+	Vec2 rend = {520, 360};
+
 	i64 D1 = - vec2det(r0, r2);
 	i64 D2 = - vec2det(r1, r0);
 	i64 D = vec2det(r1, r2) + D1 + D2;
 	if(!D) return;
 
+	D1 += vec2det(rbegin, r2);
+	D2 += vec2det(r1, rbegin);
+
+	D1 -= vec2det(rbegin, r0);
+	D2 -= vec2det(r0, rbegin);
+
 	r1.y -= r0.y;
 	r2.y -= r0.y;
-	r1.x += fb.sz.x*r1.y - r0.x;
-	r2.x += fb.sz.x*r2.y - r0.x;
+	r1.x += (rend.x-rbegin.x)*r1.y - r0.x;
+	r2.x += (rend.x-rbegin.x)*r2.y - r0.x;
 
 	UVec2 r;
-	for(r.y = 0; r.y < fb.sz.y; ++r.y, D1 -= r2.x, D2 += r1.x)
-		for(r.x = 0; r.x < fb.sz.x; ++r.x, D1 += r2.y, D2 -= r1.y)
+	for(r.y = rbegin.y; r.y < rend.y; ++r.y, D1 -= r2.x, D2 += r1.x)
+		for(r.x = rbegin.x; r.x < rend.x; ++r.x, D1 += r2.y, D2 -= r1.y)
 			if(!checkptstatus(D, D1, D2))
 				fb_set_pix(fb, r, p);
 }
