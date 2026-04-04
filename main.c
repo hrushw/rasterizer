@@ -356,9 +356,6 @@ void drawclock_wait(DrawClock *clk) {
 
 	clk->cur = get_timespec_cur(CLOCK_MONOTONIC);
 	clk->rel = get_timespec_diff(clk->cur, clk->start);
-
-	printf("%ld.%09ld : 0.%09ld s\r", clk->rel.tv_sec, clk->rel.tv_nsec, clk->diff.tv_nsec);
-	fflush(stdout);
 }
 
 void handle_events_x(WinProps_X *wp) {
@@ -369,9 +366,11 @@ void handle_events_x(WinProps_X *wp) {
 				wp->closed = 1; return;
 			case Expose: break;
 			case KeyPress:
-				printf("Key press detected!\n"); break;
+				// printf("Key press detected!\n");
+				break;
 			case KeyRelease:
-				printf("Key release detected!\n"); break;
+				// printf("Key release detected!\n");
+				break;
 			default: break;
 		}
 }
@@ -452,7 +451,7 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	};
 
 	Pixel NoseColor = 0xFFFF00;
-	fb_draw_polygon_strip(fb, NoseColor, 3, Nose);
+	fb_draw_triangle_arr(fb, NoseColor, Nose);
 
 	fb_draw_rect(fb, 0xFF00FF, (Vec2) {-200, -300}, (UVec2) {100, 200});
 
@@ -484,33 +483,39 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	};
 	fb_draw_u64_bitmaps_x(fb, 0xFF00FF, textr0, sizeof(txt)/sizeof(u64), txt);
 
-	Vec2 EyeballLeftOrigin = {fb.sz.x/16, 5*fb.sz.y/16};
+	Vec2 EyeballLeftPos = {   fb.sz.x/16, 5*fb.sz.y/16},
+		EyeballRightPos = {15*fb.sz.x/16, 5*fb.sz.y/16};
 	u32 EyeballRadius = fb.sz.x/32;
-	Vec2 EyeballRightOrigin = EyeballLeftOrigin;
 	Pixel EyeballColor = 0x00007F;
-	EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
-	int dir = 1;
+	i32 EyeLength = EyeLeft.sz.x - 2*EyeballRadius,
+		tm = 0, posx = 0;
 
 	enum { FRAME_NS = 16666667 };
 	DrawClock clk = drawclock_init((struct timespec) {0, FRAME_NS});
+
 	while(!wp->closed) {
 		// Eye motion logic
-		fb_draw_circle(fb, EyeLeftClr, EyeballRadius, EyeballLeftOrigin);
-		fb_draw_circle(fb, EyeRightClr, EyeballRadius, EyeballRightOrigin);
-		if(dir) EyeballLeftOrigin.x += 2; else EyeballLeftOrigin.x -= 2;
-		if(EyeballLeftOrigin.x > 9*(i32)fb.sz.x/32 - (i32)EyeballRadius)
-			EyeballLeftOrigin.x = 9*fb.sz.x/32 - (i32)EyeballRadius,
-			dir = 0;
-		else if(EyeballLeftOrigin.x < (i32)fb.sz.x/16)
-			EyeballLeftOrigin.x = fb.sz.x/16,
-			dir = 1;
-		EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
-		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballLeftOrigin);
-		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballRightOrigin);
+		fb_draw_circle(fb, EyeLeftClr, EyeballRadius, EyeballLeftPos);
+		fb_draw_circle(fb, EyeRightClr, EyeballRadius, EyeballRightPos);
+
+		// get time in milliseconds
+		EyeballLeftPos.x = EyeLeft.r0.x + EyeballRadius + posx;
+		EyeballRightPos.x = fb.sz.x - EyeballLeftPos.x;
+
+		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballLeftPos);
+		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballRightPos);
 
 		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), &wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
+		enum { PERIOD = 1200 };
 		drawclock_wait(&clk);
+		tm = 1000*clk.rel.tv_sec + (clk.rel.tv_nsec / 1000000);
+		posx = (((i64)tm % PERIOD) * EyeLength) / PERIOD;
+		if((tm % (2*PERIOD)) > PERIOD) posx = EyeLength - posx;
+
+		// printf("%ld.%09ld : 0.%09ld s\r", clk.rel.tv_sec, clk.rel.tv_nsec, clk.diff.tv_nsec);
+		// fflush(stdout);
+
 		handle_events_x(wp);
 	}
 	printf("\n");
