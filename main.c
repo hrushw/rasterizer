@@ -81,39 +81,27 @@ i64 vec2det(Vec2 v0, Vec2 v1) {
 
 /* Drawing functions */
 static
-UVec2 rect_bound_min0(Vec2 r0) {
-	return (UVec2) {
-		r0.x < 0 ? 0 : (u32)r0.x,
-		r0.y < 0 ? 0 : (u32)r0.y,
-	};
+void fb_clear(Fbuf fb, Pixel p) {
+	for(u64 i = 0; i < (fb.sz.x * fb.sz.y); ++i)
+		fb.buf[i] = p;
 }
 
-static
-UVec2 rect_bound_max(Fbuf fb, Vec2 r0, UVec2 sz) {
-	return (UVec2) {(
-		r0.x += sz.x,
-		r0.x > (i32)fb.sz.x
-			? fb.sz.x
-			: r0.x < 0 ? 0 : (u32)r0.x
-	), (
-		r0.y += sz.y,
-		r0.y > (i32)fb.sz.y
-			? fb.sz.y
-			: r0.y < 0 ? 0 : (u32)r0.y
-	)};
+static inline
+u32 i32min0(i32 a) {
+	return a < 0 ? 0 : a;
 }
 
-static
-void fb_draw_rect_uvec2x2(Fbuf fb, Pixel p, UVec2 r0, UVec2 r1) {
-	UVec2 r;
-	for(r.y = r0.y; r.y < r1.y; ++r.y)
-		for(r.x = r0.x; r.x < r1.x; ++r.x)
-			fb_set_pix(fb, r, p);
+static inline
+u32 i32minmax0(i32 a, u32 max) {
+	return a > (i32)max ? max : i32min0(a);
 }
 
 static
 void fb_draw_rect(Fbuf fb, Pixel p, Vec2 r0, UVec2 sz) {
-	fb_draw_rect_uvec2x2(fb, p, rect_bound_min0(r0), rect_bound_max(fb, r0, sz));
+	UVec2 r;
+	for(r.y = i32min0(r0.y); r.y < i32minmax0(r0.y + sz.y, fb.sz.y); ++r.y)
+		for(r.x = i32min0(r0.x); r.x < i32minmax0(r0.x + sz.x, fb.sz.x); ++r.x)
+			fb_set_pix(fb, r, p);
 }
 
 static inline
@@ -372,10 +360,10 @@ void handle_events_x(WinProps_X *wp) {
 				wp->closed = 1; return;
 			case Expose: break;
 			case KeyPress:
-				// printf("Key press detected!\n");
+				printf("Key press detected!\n");
 				break;
 			case KeyRelease:
-				// printf("Key release detected!\n");
+				printf("Key release detected!\n");
 				break;
 			default: break;
 		}
@@ -414,8 +402,6 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		{ fb.sz.x/32, 10*fb.sz.y/48 },
 		{ fb.sz.x/4, 10*fb.sz.y/48 },
 	};
-	Pixel EyeLeftClr = 0x00FF00;
-	fb_draw_rect(fb, EyeLeftClr, EyeLeft.r0, EyeLeft.sz);
 
 	Vec2 EyeRightOrigin = {
 		(i32)fb.sz.x - EyeLeft.r0.x - EyeLeft.sz.x,
@@ -427,8 +413,6 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		{ EyeRightOrigin.x + EyeLeft.sz.x, EyeRightOrigin.y + EyeLeft.sz.y - fb.sz.x/32 },
 		{ EyeRightOrigin.x + EyeLeft.sz.x, EyeRightOrigin.y },
 	};
-	Pixel EyeRightClr = 0x00CF3F;
-	fb_draw_quad(fb, EyeRightClr, EyeRight);
 
 	Vec2 Smilepts[] = {
 		{fb.sz.x/2, fb.sz.y/2},
@@ -445,9 +429,6 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		{25*fb.sz.x/32, 5*fb.sz.y/8},
 		{13*fb.sz.x/16, fb.sz.y/2},
 	};
-	Pixel SmileClr = 0xFF0000;
-
-	fb_draw_polygon_fan(fb, SmileClr, sizeof(Smilepts)/sizeof(Vec2), Smilepts);
 
 	Triangle Nose = {
 		{fb.sz.x/2, fb.sz.y/3},
@@ -455,16 +436,10 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		{19*fb.sz.x/32, 7*fb.sz.y/16},
 	};
 
-	Pixel NoseColor = 0xFFFF00;
-	fb_draw_triangle_arr(fb, NoseColor, Nose);
-
-	fb_draw_rect(fb, 0xFF00FF, (Vec2) {-200, -300}, (UVec2) {100, 200});
-
 	Rect Goatee = {
 		{ 7*fb.sz.x/16, 7*fb.sz.y/8 },
 		{ fb.sz.x/8, fb.sz.y/2 }
 	};
-	fb_draw_rect(fb, 0xFFFFFF, Goatee.r0, Goatee.sz);
 
 	Vec2 Brows[] = {
 		{ 5*fb.sz.x/32, (i32)fb.sz.y/12 },
@@ -476,9 +451,6 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		{ 23*fb.sz.x/32, - (i32)fb.sz.y/24 },
 	};
 
-	Pixel BrowColor = 0x7F3F00;
-	fb_draw_triangles(fb, BrowColor, 6, Brows);
-
 	UVec2 textr0 = { fb.sz.x/4, fb.sz.x/10};
 	u64 txt[] = {
 		font_H, font_E, font_L, font_L, font_O,
@@ -486,12 +458,10 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		font_W, font_O, font_R, font_L, font_D,
 		font_excl
 	};
-	fb_draw_u64_bitmaps_x(fb, 0xFF00FF, textr0, sizeof(txt)/sizeof(u64), txt);
 
 	Vec2 EyeballLeftPos = {   fb.sz.x/16, 5*fb.sz.y/16},
 		EyeballRightPos = {15*fb.sz.x/16, 5*fb.sz.y/16};
 	u32 EyeballRadius = fb.sz.x/32;
-	Pixel EyeballColor = 0x00007F;
 	i32 EyeLength = EyeLeft.sz.x - 2*EyeballRadius,
 		tm = 0, posx = 0;
 
@@ -499,14 +469,22 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	DrawClock clk = drawclock_init((struct timespec) {0, FRAME_NS});
 
 	while(!wp->closed) {
-		// Eye motion logic
-		fb_draw_circle(fb, EyeLeftClr, EyeballRadius, EyeballLeftPos);
-		fb_draw_circle(fb, EyeRightClr, EyeballRadius, EyeballRightPos);
+		fb_clear(fb, 0);
+
+		fb_draw_rect(fb, 0x00FF00, EyeLeft.r0, EyeLeft.sz);
+		fb_draw_quad(fb, 0x00CF3F, EyeRight);
+		fb_draw_polygon_fan(fb, 0xFF0000, sizeof(Smilepts)/sizeof(Vec2), Smilepts);
+		fb_draw_triangle_arr(fb, 0xFFFF00, Nose);
+		fb_draw_rect(fb, 0xFF00FF, (Vec2) {-200, -300}, (UVec2) {100, 200});
+		fb_draw_rect(fb, 0xFFFFFF, Goatee.r0, Goatee.sz);
+		fb_draw_triangles(fb, 0x7F3F00, 6, Brows);
+		fb_draw_u64_bitmaps_x(fb, 0xFF00FF, textr0, sizeof(txt)/sizeof(u64), txt);
 
 		// get time in milliseconds
 		EyeballLeftPos.x = EyeLeft.r0.x + EyeballRadius + posx;
 		EyeballRightPos.x = fb.sz.x - EyeballLeftPos.x;
 
+		Pixel EyeballColor = 0x00007F;
 		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballLeftPos);
 		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballRightPos);
 
@@ -518,8 +496,8 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		posx = (((i64)tm % PERIOD) * EyeLength) / PERIOD;
 		if((tm % (2*PERIOD)) > PERIOD) posx = EyeLength - posx;
 
-		// printf("%ld.%09ld : 0.%09ld s\r", clk.rel.tv_sec, clk.rel.tv_nsec, clk.diff.tv_nsec);
-		// fflush(stdout);
+		printf("%ld.%09ld : 0.%09ld s\r", clk.rel.tv_sec, clk.rel.tv_nsec, clk.diff.tv_nsec);
+		fflush(stdout);
 
 		handle_events_x(wp);
 	}
