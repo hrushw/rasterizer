@@ -185,6 +185,12 @@ void fb_draw_triangles(Fbuf fb, Pixel p, u32 n, Vec2 *pts) {
 }
 
 static
+void fb_draw_triangles_indexed(Fbuf fb, Pixel p, u32 n, u32 *I, Vec2 *pts) {
+	for(u32 i = 0; i < n-2; i += 3)
+		fb_draw_triangle(fb, p, pts[I[i]], pts[I[i+1]], pts[I[i+2]]);
+}
+
+static
 void fb_draw_polygon_strip(Fbuf fb, Pixel p, u32 n, Vec2 *pts) {
 	for(u32 i = 0; i < n-2; ++i)
 		fb_draw_triangle(fb, p, pts[i], pts[i+1], pts[i+2]);
@@ -389,10 +395,9 @@ const u64 font_blank = 0x0000000000000000;
 
 static
 void fb_draw_u64_bitmap(Fbuf fb, Pixel p, UVec2 r, u64 bmp) {
-	for(u8 y = 0; y < 8; ++y)
-		for(u8 x = 0; x < 8; ++x)
-			if(bmp & ((u64)1 << (y*8 + x)))
-				fb_set_pix(fb, (UVec2) { r.x + x, r.y + y }, p);
+	for(u8 i = 0; i < 64; ++i)
+		if((bmp >> i) & 1)
+			fb_set_pix(fb, (UVec2) {r.x + i % 8, r.y + i / 8}, p);
 }
 
 static void fb_draw_u64_bitmaps_x(Fbuf fb, Pixel p, UVec2 r, u32 n, u64 *bmps) {
