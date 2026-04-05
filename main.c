@@ -83,15 +83,6 @@ i64 vec2det(Vec2 v0, Vec2 v1) {
 	return (i64)v0.x*(i64)v1.y - (i64)v1.x*(i64)v0.y;
 }
 
-static inline
-i64 uv2v2det(UVec2 v0, Vec2 v1) {
-	return (i64)v0.x*(i64)v1.y - (i64)v1.x*(i64)v0.y;
-}
-
-i64 v2uv2det(Vec2 v0, UVec2 v1) {
-	return (i64)v0.x*(i64)v1.y - (i64)v1.x*(i64)v0.y;
-}
-
 /* Drawing functions */
 static
 void fb_clear(Fbuf fb, Pixel p) {
@@ -168,8 +159,10 @@ void fb_draw_triangle_bounded(Fbuf fb, Pixel p, UVec2 B0, UVec2 B1, Vec2 r0, Vec
 		dr1.x = -dr1.x, dr1.y = -dr1.y,
 		dr2.x = -dr2.x, dr2.y = -dr2.y;
 
-	i64 D1 = uv2v2det(B0, dr2) - vec2det(r0, dr2);
-	i64 D2 = v2uv2det(dr1, B0) - vec2det(dr1, r0);
+	r0.x = (i32)B0.x - r0.x, r0.y = (i32)B0.y - r0.y;
+	i64 D1 = vec2det(r0, dr2);
+	i64 D2 = vec2det(dr1, r0);
+	r0.x = (i32)B0.x - r0.x, r0.y = (i32)B0.y - r0.y;
 
 	B1.x -= B0.x;
 	dr1.x += B1.x*dr1.y;
@@ -230,13 +223,9 @@ void fb_draw_polygon_fan(Fbuf fb, Pixel p, u32 n, Vec2 *pts) {
 /* framebuffer export to ppm */
 static
 void fb_to_ppm(FILE *f, Fbuf fb) {
-	Pixel p;
-	u8 pixbuf[3];
 	for(u32 i = 0; i < fb.sz.x*fb.sz.y; ++i) {
-		p = fb.buf[i];
-		pixbuf[0] = pixR(p);
-		pixbuf[1] = pixG(p);
-		pixbuf[2] = pixB(p);
+		Pixel p = fb.buf[i];
+		u8 pixbuf[3] = { pixR(p), pixG(p), pixB(p) };
 		fwrite(pixbuf, 3, 1, f);
 	}
 }
