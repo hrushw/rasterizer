@@ -136,18 +136,6 @@ void fb_draw_circle(Fbuf fb, Pixel p, u32 R, Vec2 r0) {
 				fb_set_pix(fb, r, p);
 }
 
-// 0 is success
-static
-int checkptstatus(i64 D, i64 D1, i64 D2) {
-	if(D < 0) D = -D, D1 = -D1, D2 = -D2;
-	return (D1 < 0 || D2 < 0 || (u64)D1 + (u64)D2 > (u64)D);
-}
-
-static
-Vec2 vec2sub(Vec2 r1, Vec2 r0) {
-	return (Vec2) { r1.x - r0.x, r1.y - r0.y };
-}
-
 static
 Vec2 i32minmax_3_partial(i32 a, i32 b, i32 c) {
 	return b < c
@@ -174,10 +162,14 @@ UVec2x2 triangle_bound(UVec2 sz, Vec2 r0, Vec2 r1, Vec2 r2) {
 
 static
 void fb_draw_triangle_bounded(Fbuf fb, Pixel p, UVec2 B0, UVec2 B1, Vec2 r0, Vec2 dr1, Vec2 dr2) {
-	i64 D = vec2det(dr1, dr2),
-		D1 = uv2v2det(B0, dr2) - vec2det(r0, dr2),
-		D2 = v2uv2det(dr1, B0) - vec2det(dr1, r0);
+	i64 D = vec2det(dr1, dr2);
 	// if(!D) return;
+	if(D < 0) D = -D,
+		dr1.x = -dr1.x, dr1.y = -dr1.y,
+		dr2.x = -dr2.x, dr2.y = -dr2.y;
+
+	i64 D1 = uv2v2det(B0, dr2) - vec2det(r0, dr2);
+	i64 D2 = v2uv2det(dr1, B0) - vec2det(dr1, r0);
 
 	B1.x -= B0.x;
 	dr1.x += B1.x*dr1.y;
@@ -187,7 +179,7 @@ void fb_draw_triangle_bounded(Fbuf fb, Pixel p, UVec2 B0, UVec2 B1, Vec2 r0, Vec
 	UVec2 r;
 	for(r.y = B0.y; r.y < B1.y; ++r.y, D1 -= dr2.x, D2 += dr1.x)
 		for(r.x = B0.x; r.x < B1.x; ++r.x, D1 += dr2.y, D2 -= dr1.y)
-			if(!checkptstatus(D, D1, D2))
+			if(D1 >= 0 && D2 >= 0 && (u64)D1 + (u64)D2 <= (u64)D)
 				fb_set_pix(fb, r, p);
 }
 
@@ -195,7 +187,9 @@ void fb_draw_triangle_bounded(Fbuf fb, Pixel p, UVec2 B0, UVec2 B1, Vec2 r0, Vec
 static
 void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
 	UVec2x2 bound = triangle_bound(fb.sz, r0, r1, r2);
-	fb_draw_triangle_bounded(fb, p, bound.r0, bound.r1, r0, vec2sub(r1, r0), vec2sub(r2, r0));
+	r1.x -= r0.x, r1.y -= r0.y;
+	r2.x -= r0.x, r2.y -= r0.y;
+	fb_draw_triangle_bounded(fb, p, bound.r0, bound.r1, r0, r1, r2);
 }
 
 static inline
