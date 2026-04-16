@@ -168,7 +168,6 @@ int main() {
 	enum win_height_e { HEIGHT = 480 };
 
 	static Pixel fbufdata[HEIGHT*WIDTH] = {0};
-
 	Fbuf fb = { { WIDTH, HEIGHT }, fbufdata };
 
 	WinProps_X wp = window_init_x(fb);
@@ -177,7 +176,7 @@ int main() {
 
 	wp.img.data = NULL;
 	XCloseDisplay(wp.disp);
-	render_to_ppm(fb);
+	render_to_ppm(fopen("test01.ppm", "wb"), fb);
 
 	return wp.status;
 }

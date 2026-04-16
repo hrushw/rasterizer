@@ -306,14 +306,11 @@ void fb_to_ppm(FILE *f, Fbuf fb) {
 }
 
 static
-void render_to_ppm(Fbuf fb) {
-	const char* fname = "img.ppm";
-	FILE* f = fopen(fname, "wb");
-
+void render_to_ppm(FILE *f, Fbuf fb) {
 	fprintf(f, "P6\n%d %d 255\n", fb.sz.x, fb.sz.y);
 	fb_to_ppm(f, fb);
+	fclose(f);
 }
-
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
